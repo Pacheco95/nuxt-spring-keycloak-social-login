@@ -65,6 +65,43 @@ It will be used as the source of truth configuration for **ALL** docker compose 
 - Suggest a naming convention to environment variables.
 
 
+# Design decisions (locked)
+
+The following decisions were confirmed with the project owner before implementation. They are binding requirements — treat them with the same weight as the items in "Implementation requirements" above.
+
+## Backend role in v1
+
+The Spring Boot API exposes a JWT-protected endpoint `GET /api/me` that returns the authenticated user's `name`, `email`, and `picture`, derived from the Keycloak access-token claims. The Nuxt BFF calls this endpoint server-to-server (with the user's bearer token) when rendering the `/profile` page. Profile data **must not** be rendered purely from the BFF's local session — calling the backend is what exercises (and demonstrates) the full Keycloak → Spring Boot JWKS validation chain end-to-end.
+
+## Logout flow
+
+Logout is **RP-initiated** (OpenID Connect RP-Initiated Logout 1.0). Clicking "Log Out" must:
+
+1. Clear the BFF's server-side session and the browser session cookie.
+2. Redirect the browser to Keycloak's `end_session_endpoint` with `id_token_hint` and `post_logout_redirect_uri` set to the home page.
+3. Keycloak terminates its own SSO session; the user lands on `/`.
+
+Local-only logout (clearing the cookie and redirecting home without calling Keycloak) is **not acceptable**, because the still-active Keycloak SSO session would silently re-authenticate the user on the next "Login with Google" click.
+
+## Google OAuth credentials
+
+Assume the developer running the project does **not** yet have a Google Cloud OAuth client. The project-level `README.md` (user story 006) must include a step-by-step walkthrough covering:
+
+- Creating a Google Cloud project
+- Configuring the OAuth consent screen
+- Creating an OAuth 2.0 Client ID (Web application)
+- The exact "Authorized redirect URI" to register — this is Keycloak's Google identity-provider broker callback URL (e.g. `http://localhost:8080/realms/<realm>/broker/google/endpoint`)
+- Where to paste the resulting client ID and client secret in `.env`
+
+`.env.example` ships with `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` present but blank.
+
+## Local-dev hostnames
+
+All services are exposed on `localhost` with distinct ports (suggested: Nuxt `:3000`, Spring `:8081`, Keycloak `:8080`, PgAdmin `:5050`, Postgres instances on separate non-default ports). The BFF reaches Keycloak in-container via the docker-compose service name (`keycloak:8080`) for the server-to-server token exchange.
+
+Critically, **Keycloak's issuer URL (`KC_HOSTNAME`) must be pinned to `http://localhost:8080`** so the `iss` claim in issued tokens matches what the browser observes during the redirect. Use Keycloak 26's hostname-v2 options (e.g. `KC_HOSTNAME`, `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`) to allow backchannel calls from inside the docker network while keeping a stable, browser-visible issuer. Issuer mismatch between the browser-facing and server-to-server views of Keycloak is the single most common cause of "invalid_token" failures in this architecture — the docker-compose config should document this inline.
+
+
 # User stories
 
 ## User story 001
