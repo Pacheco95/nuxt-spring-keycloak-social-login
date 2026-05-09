@@ -1,19 +1,21 @@
 #!/bin/sh
-# Idempotent bootstrap: creates the realm, the BFF OIDC client, and the Google
-# identity provider. Safe to re-run — exits 0 if the realm already exists.
+# Step-wise idempotent bootstrap. Each entity (realm, client, mappers, IdP)
+# is checked before being created, so re-running the script after editing it
+# will pick up newly-added steps without requiring a realm wipe.
 #
-# Run via the keycloak-realm-init compose service. Required env vars come
-# from the root .env file (passed through docker-compose.yml).
+# Sh + grep only — the Keycloak runtime image has no python/jq.
+#
+# Run via the keycloak-realm-init compose service; env vars come from the
+# root .env file (passed through docker-compose.yml).
 set -eu
 
 KCADM=/opt/keycloak/bin/kcadm.sh
 KEYCLOAK_URL="${KEYCLOAK_INTERNAL_URL}"
+REALM="${KEYCLOAK_REALM_NAME}"
 
 log() { printf '[realm-init] %s\n' "$*"; }
 
-# Wait until Keycloak's admin endpoint accepts our credentials. depends_on:
-# service_healthy should already cover this, but kcadm-based retry costs
-# nothing and avoids relying on the healthcheck timing.
+# ── Auth ─────────────────────────────────────────────────────────────────
 log "Authenticating against ${KEYCLOAK_URL} as ${KEYCLOAK_ADMIN_USER} ..."
 attempts=0
 until "$KCADM" config credentials \
@@ -32,27 +34,39 @@ until "$KCADM" config credentials \
 done
 log "Authenticated."
 
-# Idempotency: skip the whole bootstrap if the realm already exists.
-if "$KCADM" get "realms/${KEYCLOAK_REALM_NAME}" >/dev/null 2>&1; then
-  log "Realm '${KEYCLOAK_REALM_NAME}' already exists. Nothing to do."
-  exit 0
+# ── Realm ────────────────────────────────────────────────────────────────
+if "$KCADM" get "realms/${REALM}" >/dev/null 2>&1; then
+  log "Realm '${REALM}' already exists."
+else
+  log "Creating realm '${REALM}'."
+  "$KCADM" create realms \
+    -s "realm=${REALM}" \
+    -s enabled=true \
+    -s "displayName=${REALM}" \
+    -s sslRequired=NONE \
+    -s registrationAllowed=false \
+    -s loginWithEmailAllowed=true \
+    -s duplicateEmailsAllowed=false \
+    -s resetPasswordAllowed=false \
+    -s editUsernameAllowed=false \
+    -s bruteForceProtected=true
 fi
 
-log "Creating realm '${KEYCLOAK_REALM_NAME}'."
-"$KCADM" create realms \
-  -s "realm=${KEYCLOAK_REALM_NAME}" \
-  -s enabled=true \
-  -s "displayName=${KEYCLOAK_REALM_NAME}" \
-  -s sslRequired=NONE \
-  -s registrationAllowed=false \
-  -s loginWithEmailAllowed=true \
-  -s duplicateEmailsAllowed=false \
-  -s resetPasswordAllowed=false \
-  -s editUsernameAllowed=false \
-  -s bruteForceProtected=true
+# ── BFF OIDC client ──────────────────────────────────────────────────────
+# kcadm prints pretty JSON; grab the first UUID-shaped value following an
+# "id" key. Reliable enough for our tightly-scoped queries.
+get_first_uuid() {
+  grep -oE '"id"[[:space:]]*:[[:space:]]*"[a-f0-9-]{36}"' \
+    | head -n1 \
+    | grep -oE '[a-f0-9-]{36}'
+}
 
-log "Creating OIDC client '${KEYCLOAK_REALM_CLIENT_ID}' for the Nuxt BFF."
-CLIENT_PAYLOAD=$(cat <<JSON
+CLIENT_UUID=$("$KCADM" get clients -r "${REALM}" \
+  -q "clientId=${KEYCLOAK_REALM_CLIENT_ID}" 2>/dev/null | get_first_uuid || true)
+
+if [ -z "${CLIENT_UUID:-}" ]; then
+  log "Creating OIDC client '${KEYCLOAK_REALM_CLIENT_ID}' for the Nuxt BFF."
+  CLIENT_PAYLOAD=$(cat <<JSON
 {
   "clientId": "${KEYCLOAK_REALM_CLIENT_ID}",
   "secret": "${KEYCLOAK_REALM_CLIENT_SECRET}",
@@ -74,20 +88,54 @@ CLIENT_PAYLOAD=$(cat <<JSON
 }
 JSON
 )
-printf '%s' "$CLIENT_PAYLOAD" | "$KCADM" create clients -r "${KEYCLOAK_REALM_NAME}" -f -
+  printf '%s' "$CLIENT_PAYLOAD" | "$KCADM" create clients -r "${REALM}" -f -
+  CLIENT_UUID=$("$KCADM" get clients -r "${REALM}" \
+    -q "clientId=${KEYCLOAK_REALM_CLIENT_ID}" | get_first_uuid)
+else
+  log "Client '${KEYCLOAK_REALM_CLIENT_ID}' already exists (uuid=${CLIENT_UUID})."
+fi
 
-# Google identity provider — only configured if credentials are present, so
-# the first compose-up still succeeds before the developer has filled in
-# their Google Cloud values. Re-run with `make realm-reset` once they do.
+# ── 'picture' protocol mapper on the BFF client ──────────────────────────
+if "$KCADM" get "clients/${CLIENT_UUID}/protocol-mappers/models" -r "${REALM}" \
+   2>/dev/null | grep -q '"name"[[:space:]]*:[[:space:]]*"picture"'; then
+  log "'picture' protocol mapper already present on client."
+else
+  log "Adding 'picture' protocol mapper to client '${KEYCLOAK_REALM_CLIENT_ID}'."
+  PICTURE_CLIENT_MAPPER=$(cat <<'JSON'
+{
+  "name": "picture",
+  "protocol": "openid-connect",
+  "protocolMapper": "oidc-usermodel-attribute-mapper",
+  "config": {
+    "user.attribute": "picture",
+    "claim.name": "picture",
+    "jsonType.label": "String",
+    "id.token.claim": "true",
+    "access.token.claim": "true",
+    "userinfo.token.claim": "true",
+    "multivalued": "false",
+    "aggregate.attrs": "false"
+  }
+}
+JSON
+)
+  printf '%s' "$PICTURE_CLIENT_MAPPER" | "$KCADM" create \
+    "clients/${CLIENT_UUID}/protocol-mappers/models" -r "${REALM}" -f -
+fi
+
+# ── Google IdP — needs credentials ───────────────────────────────────────
 if [ -z "${GOOGLE_CLIENT_ID:-}" ] || [ -z "${GOOGLE_CLIENT_SECRET:-}" ]; then
   log "WARNING: GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are blank."
-  log "         Realm and client created, but Google IdP is NOT configured."
-  log "         Fill them into .env, then run 'make realm-reset' to retry."
+  log "         Realm and client are configured, but the Google IdP is NOT."
+  log "         Fill the values into .env, then run 'make realm-reset' to retry."
   exit 0
 fi
 
-log "Adding Google identity provider."
-GOOGLE_PAYLOAD=$(cat <<JSON
+if "$KCADM" get "identity-provider/instances/google" -r "${REALM}" >/dev/null 2>&1; then
+  log "Google identity provider already configured."
+else
+  log "Adding Google identity provider."
+  GOOGLE_PAYLOAD=$(cat <<JSON
 {
   "alias": "google",
   "displayName": "Google",
@@ -105,7 +153,31 @@ GOOGLE_PAYLOAD=$(cat <<JSON
 }
 JSON
 )
-printf '%s' "$GOOGLE_PAYLOAD" | "$KCADM" create identity-provider/instances \
-  -r "${KEYCLOAK_REALM_NAME}" -f -
+  printf '%s' "$GOOGLE_PAYLOAD" | "$KCADM" create identity-provider/instances \
+    -r "${REALM}" -f -
+fi
 
-log "Done. Realm '${KEYCLOAK_REALM_NAME}' bootstrapped successfully."
+# ── 'picture' IdP mapper on Google ───────────────────────────────────────
+if "$KCADM" get "identity-provider/instances/google/mappers" -r "${REALM}" \
+   2>/dev/null | grep -q '"name"[[:space:]]*:[[:space:]]*"google-picture"'; then
+  log "'google-picture' IdP mapper already present."
+else
+  log "Adding 'picture' attribute importer mapper to the Google IdP."
+  PICTURE_IDP_MAPPER=$(cat <<'JSON'
+{
+  "name": "google-picture",
+  "identityProviderAlias": "google",
+  "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+  "config": {
+    "syncMode": "INHERIT",
+    "claim": "picture",
+    "user.attribute": "picture"
+  }
+}
+JSON
+)
+  printf '%s' "$PICTURE_IDP_MAPPER" | "$KCADM" create \
+    "identity-provider/instances/google/mappers" -r "${REALM}" -f -
+fi
+
+log "Done. Realm '${REALM}' is fully bootstrapped."
