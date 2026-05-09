@@ -1,0 +1,9 @@
+node_modules
+.nuxt
+.output
+.env
+.env.*
+!.env.example
+.idea
+.vscode
+*.log
