@@ -1,4 +1,9 @@
 <script setup lang="ts">
+// Public route — explicit opt-out of the global oidcAuth middleware so an
+// unauthenticated visitor can see and click the Login button (story 001).
+// All other routes stay fail-closed by default.
+definePageMeta({ oidcAuth: { enabled: false } })
+
 const { loggedIn, login } = useOidcAuth()
 const route = useRoute()
 

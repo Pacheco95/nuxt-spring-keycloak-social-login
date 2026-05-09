@@ -6,10 +6,9 @@ interface MeResponse {
   picture: string | null
 }
 
-definePageMeta({
-  middleware: ['auth'],
-})
-
+// Authentication is enforced by the global oidcAuth middleware (fail-closed
+// default in nuxt.config.ts). Unauthenticated visitors are kicked into the
+// OAuth flow with a callbackRedirectUrl that brings them back here.
 const { logout } = useOidcAuth()
 
 // SSR-friendly fetch through the BFF proxy. The bearer token is attached

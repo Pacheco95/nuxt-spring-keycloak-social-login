@@ -30,9 +30,10 @@ export default defineNuxtConfig({
   oidc: {
     defaultProvider: 'keycloak',
     middleware: {
-      // The home page is public (story 001 — anyone can see the Login button).
-      // Protected routes opt in via `definePageMeta({ middleware: ['auth'] })`.
-      globalMiddlewareEnabled: false,
+      // Fail-closed: every route requires auth by default. Routes that need
+      // to be public (e.g. the home page with the Login button) opt out via
+      // `definePageMeta({ oidcAuth: { enabled: false } })`.
+      globalMiddlewareEnabled: true,
     },
     session: {
       automaticRefresh: true,
