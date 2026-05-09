@@ -57,8 +57,12 @@ export default defineNuxtConfig({
         tokenUrl: `${internalKc}/realms/${realm}/protocol/openid-connect/token`,
         userInfoUrl: `${internalKc}/realms/${realm}/protocol/openid-connect/userinfo`,
         scope: ['openid', 'profile', 'email'],
-        // The backend validates JWTs against the JWKS — no need to do it
-        // again here, and it would force a discovery fetch via baseUrl.
+        // The backend re-validates every JWT against the realm's JWKS, so
+        // skipping validation here is not a security gap — but it does
+        // remove one layer of defense-in-depth and slows failure on any
+        // future misconfig. Re-enabling requires overriding the lib's
+        // `openIdConfiguration` to use the internal URL instead of the
+        // (split) baseUrl. Tracked in docs/bff-token-validation.md.
         validateAccessToken: false,
         validateIdToken: false,
         // Strict BFF: the access token never appears in the session payload
