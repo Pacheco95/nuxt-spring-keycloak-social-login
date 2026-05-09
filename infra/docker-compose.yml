@@ -1,0 +1,203 @@
+# All services read configuration from ../.env at the repo root.
+# Naming convention for env vars: <SERVICE>_<NAME> in .env, then mapped here
+# to whatever the upstream image actually expects (POSTGRES_*, KC_*, etc.).
+#
+# Hostname strategy (locked decision — see CLAUDE.md):
+#   * Browser sees Keycloak at ${KEYCLOAK_HOSTNAME} (= http://localhost:8080).
+#   * Other containers reach Keycloak via the compose service name `keycloak`.
+#   * KC_HOSTNAME is pinned so the JWT `iss` claim matches both views.
+# If you change KEYCLOAK_HOSTNAME, also update BACKEND_OIDC_ISSUER_URI.
+
+name: ${COMPOSE_PROJECT_NAME:-social-login}
+
+networks:
+  social-login:
+    driver: bridge
+
+volumes:
+  keycloak-db-data:
+  backend-db-data:
+  pgadmin-data:
+
+services:
+  # ─── Keycloak's Postgres ────────────────────────────────────────────────
+  keycloak-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${KEYCLOAK_DB_NAME}
+      POSTGRES_USER: ${KEYCLOAK_DB_USER}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+    volumes:
+      - keycloak-db-data:/var/lib/postgresql/data
+    ports:
+      - "${KEYCLOAK_DB_HOST_PORT}:5432"
+    networks: [social-login]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KEYCLOAK_DB_USER} -d ${KEYCLOAK_DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ─── Backend's Postgres ─────────────────────────────────────────────────
+  backend-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${BACKEND_DB_NAME}
+      POSTGRES_USER: ${BACKEND_DB_USER}
+      POSTGRES_PASSWORD: ${BACKEND_DB_PASSWORD}
+    volumes:
+      - backend-db-data:/var/lib/postgresql/data
+    ports:
+      - "${BACKEND_DB_HOST_PORT}:5432"
+    networks: [social-login]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BACKEND_DB_USER} -d ${BACKEND_DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ─── Keycloak ───────────────────────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    environment:
+      # Admin bootstrap (Keycloak 26 uses KC_BOOTSTRAP_ADMIN_*).
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      # Hostname v2: pin the public URL so `iss` is stable regardless of
+      # how a client reaches the server. Backchannel-dynamic lets the BFF
+      # call `keycloak:8080` from inside the network without breaking iss.
+      KC_HOSTNAME: ${KEYCLOAK_HOSTNAME}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://${KEYCLOAK_DB_HOST}:${KEYCLOAK_DB_PORT}/${KEYCLOAK_DB_NAME}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    ports:
+      - "${KEYCLOAK_HTTP_HOST_PORT}:${KEYCLOAK_HTTP_PORT}"
+    networks: [social-login]
+    healthcheck:
+      # Keycloak 26 exposes /health/ready on management port 9000 by default.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000; echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; grep -q '\"status\": \"UP\"' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ─── Realm bootstrap (one-shot) ─────────────────────────────────────────
+  keycloak-realm-init:
+    build: ./keycloak/realm-init
+    restart: "no"
+    environment:
+      KEYCLOAK_INTERNAL_URL: http://keycloak:${KEYCLOAK_HTTP_PORT}
+      KEYCLOAK_ADMIN_USER: ${KEYCLOAK_ADMIN_USER}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_REALM_NAME: ${KEYCLOAK_REALM_NAME}
+      KEYCLOAK_REALM_CLIENT_ID: ${KEYCLOAK_REALM_CLIENT_ID}
+      KEYCLOAK_REALM_CLIENT_SECRET: ${KEYCLOAK_REALM_CLIENT_SECRET}
+      FRONTEND_PUBLIC_URL: ${FRONTEND_PUBLIC_URL}
+      FRONTEND_OIDC_REDIRECT_URI: ${FRONTEND_OIDC_REDIRECT_URI}
+      FRONTEND_OIDC_POST_LOGOUT_REDIRECT_URI: ${FRONTEND_OIDC_POST_LOGOUT_REDIRECT_URI}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    networks: [social-login]
+
+  # ─── Backend (Spring Boot) ──────────────────────────────────────────────
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: ${BACKEND_HTTP_PORT}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${BACKEND_DB_HOST}:${BACKEND_DB_PORT}/${BACKEND_DB_NAME}
+      SPRING_DATASOURCE_USERNAME: ${BACKEND_DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${BACKEND_DB_PASSWORD}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: ${BACKEND_OIDC_ISSUER_URI}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:${KEYCLOAK_HTTP_PORT}/realms/${KEYCLOAK_REALM_NAME}/protocol/openid-connect/certs
+      LOGGING_LEVEL_ROOT: ${BACKEND_LOG_LEVEL}
+    depends_on:
+      backend-db:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_HTTP_HOST_PORT}:${BACKEND_HTTP_PORT}"
+    networks: [social-login]
+
+  # ─── Frontend (Nuxt BFF) ────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NUXT_HOST: 0.0.0.0
+      NUXT_PORT: ${FRONTEND_HTTP_PORT}
+      NUXT_PUBLIC_BASE_URL: ${FRONTEND_PUBLIC_URL}
+      NUXT_OIDC_SESSION_SECRET: ${FRONTEND_SESSION_PASSWORD}
+      NUXT_OIDC_AUTH_SESSION_SECRET: ${FRONTEND_SESSION_PASSWORD}
+      NUXT_OIDC_TOKEN_KEY: ${FRONTEND_SESSION_PASSWORD}
+      NUXT_OIDC_PROVIDERS_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_REALM_CLIENT_ID}
+      NUXT_OIDC_PROVIDERS_KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_REALM_CLIENT_SECRET}
+      KEYCLOAK_PUBLIC_URL: ${FRONTEND_OIDC_KEYCLOAK_PUBLIC_URL}
+      # Internal URLs are derived from compose service names + container ports.
+      KEYCLOAK_INTERNAL_URL: http://keycloak:${KEYCLOAK_HTTP_PORT}
+      FRONTEND_BACKEND_INTERNAL_URL: http://backend:${BACKEND_HTTP_PORT}
+      KEYCLOAK_REALM_NAME: ${KEYCLOAK_REALM_NAME}
+      FRONTEND_OIDC_REDIRECT_URI: ${FRONTEND_OIDC_REDIRECT_URI}
+      FRONTEND_OIDC_POST_LOGOUT_REDIRECT_URI: ${FRONTEND_OIDC_POST_LOGOUT_REDIRECT_URI}
+    depends_on:
+      keycloak-realm-init:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
+    ports:
+      - "${FRONTEND_HTTP_HOST_PORT}:${FRONTEND_HTTP_PORT}"
+    networks: [social-login]
+
+  # ─── PgAdmin ────────────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:8
+    restart: unless-stopped
+    user: root
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_LISTEN_PORT: ${PGADMIN_HTTP_PORT}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      KEYCLOAK_DB_HOST: ${KEYCLOAK_DB_HOST}
+      KEYCLOAK_DB_PORT: ${KEYCLOAK_DB_PORT}
+      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME}
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      BACKEND_DB_HOST: ${BACKEND_DB_HOST}
+      BACKEND_DB_PORT: ${BACKEND_DB_PORT}
+      BACKEND_DB_NAME: ${BACKEND_DB_NAME}
+      BACKEND_DB_USER: ${BACKEND_DB_USER}
+      BACKEND_DB_PASSWORD: ${BACKEND_DB_PASSWORD}
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - ./pgadmin/entrypoint.sh:/custom-entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/custom-entrypoint.sh"]
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+      backend-db:
+        condition: service_healthy
+    ports:
+      - "${PGADMIN_HTTP_HOST_PORT}:${PGADMIN_HTTP_PORT}"
+    networks: [social-login]

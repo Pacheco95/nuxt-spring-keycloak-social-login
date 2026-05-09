@@ -1,0 +1,19 @@
+# Local environment — only the example is committed.
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Build output (per-module .gitignore covers the rest)
+**/build/
+**/.gradle/
+**/node_modules/
+**/.nuxt/
+**/.output/
+
+# Docker volumes (if any are bind-mounted under the repo)
+infra/.volumes/
