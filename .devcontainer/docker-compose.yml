@@ -1,0 +1,27 @@
+# Standalone compose for the dev-container workspace only.
+#
+# Crucial: `name: social-login` matches infra/docker-compose.yml, so the
+# `social-login` network here resolves to the same docker network
+# (`social-login_social-login`) that `make up` creates. That lets the
+# workspace reach compose services by name (keycloak:8080, backend-db:5432,
+# …) when you run `./gradlew bootRun` or `bun run dev` from inside.
+#
+# We deliberately do NOT include ../infra/docker-compose.yml here: that
+# would force `${VAR}` interpolation on every service in it, which would
+# in turn require .env to live in this file's project directory. Keeping
+# the workspace standalone avoids that.
+
+name: social-login
+
+networks:
+  social-login:
+    driver: bridge
+
+services:
+  workspace:
+    image: mcr.microsoft.com/devcontainers/base:bookworm
+    init: true
+    command: sleep infinity
+    volumes:
+      - ..:/workspaces/social-login:cached
+    networks: [social-login]

@@ -1,6 +1,8 @@
 {
   "name": "social-login",
-  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "workspace",
+  "workspaceFolder": "/workspaces/social-login",
   "features": {
     "ghcr.io/devcontainers/features/java:1": {
       "version": "24-tem",
