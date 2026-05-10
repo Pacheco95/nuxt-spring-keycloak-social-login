@@ -7,13 +7,6 @@ definePageMeta({ oidcAuth: { enabled: false } })
 const { loggedIn, login } = useOidcAuth()
 const route = useRoute()
 
-// User story 002 — once logged in, send them to /profile.
-watchEffect(() => {
-  if (loggedIn.value) {
-    navigateTo('/profile')
-  }
-})
-
 // User story 005 — surface OIDC errors that arrived as ?error=... query params.
 const errorMessage = computed<string | null>(() => {
   const code = route.query.error
@@ -34,8 +27,14 @@ const errorMessage = computed<string | null>(() => {
   }
 })
 
+// Story 002: after the OAuth flow completes, the BFF callback redirects to
+// this page — we want them on /profile instead. The login() composable
+// passes any extra params through to /auth/keycloak/login, where the
+// `callbackRedirectUrl` query param is honoured by the lib's callback
+// handler. Visiting / manually while already logged in stays on / (fixed
+// after the previous version auto-redirected and trapped the user there).
 async function handleLogin() {
-  await login('keycloak')
+  await login('keycloak', { callbackRedirectUrl: '/profile' })
 }
 </script>
 
@@ -44,7 +43,12 @@ async function handleLogin() {
     <h1>Welcome</h1>
     <p>Sign in with your Google account to access your profile.</p>
 
-    <button class="btn-google" type="button" @click="handleLogin">
+    <button
+      v-if="!loggedIn"
+      class="btn-google"
+      type="button"
+      @click="handleLogin"
+    >
       <svg
         aria-hidden="true"
         viewBox="0 0 18 18"
@@ -58,6 +62,9 @@ async function handleLogin() {
       </svg>
       Login with Google
     </button>
+    <NuxtLink v-else to="/profile" class="btn-profile">
+      Go to your profile →
+    </NuxtLink>
 
     <p v-if="errorMessage" class="error" role="alert">
       {{ errorMessage }}
@@ -90,6 +97,16 @@ p { margin: 0 0 1.5rem; color: #4b5563; }
   transition: background-color 0.15s, box-shadow 0.15s;
 }
 .btn-google:hover { background: #f9fafb; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.btn-profile {
+  display: inline-block;
+  padding: 0.75rem 1.25rem;
+  background: #1f2937;
+  color: white;
+  border-radius: 0.5rem;
+  text-decoration: none;
+  font-weight: 500;
+}
+.btn-profile:hover { background: #111827; }
 .error {
   margin-top: 1.5rem;
   padding: 0.75rem 1rem;
