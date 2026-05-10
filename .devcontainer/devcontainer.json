@@ -1,0 +1,36 @@
+{
+  "name": "social-login",
+  "image": "mcr.microsoft.com/devcontainers/java:1-24-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "moby": false
+    },
+    "ghcr.io/shyim/devcontainers-features/bun:0": {}
+  },
+  "forwardPorts": [3000, 8080, 8081],
+  "portsAttributes": {
+    "3000": { "label": "Nuxt BFF" },
+    "8080": { "label": "Keycloak" },
+    "8081": { "label": "Spring Boot API" }
+  },
+  "postCreateCommand": "cd frontend && bun install || true",
+  "remoteUser": "vscode",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "fwcd.kotlin",
+        "Vue.volar",
+        "ms-azuretools.vscode-docker",
+        "redhat.vscode-yaml",
+        "EditorConfig.EditorConfig"
+      ],
+      "settings": {
+        "java.configuration.runtimes": [
+          { "name": "JavaSE-24", "path": "/usr/lib/jvm/msopenjdk-current", "default": true }
+        ],
+        "files.eol": "\n"
+      }
+    }
+  }
+}
