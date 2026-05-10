@@ -1,17 +1,18 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 //
-// Hostname split (locked decision — see CLAUDE.md):
-//   * Browser-facing endpoints (auth, logout) use FRONTEND_OIDC_KEYCLOAK_PUBLIC_URL.
-//   * Server-side endpoints (token, userinfo) use KEYCLOAK_INTERNAL_URL set
-//     by docker-compose (the in-network compose service name).
-// Setting these absolute URLs avoids nuxt-oidc-auth's baseUrl auto-derivation
-// (which would force every endpoint onto a single base).
+// Hostname split (locked decision — see CLAUDE.md): the BFF needs DIFFERENT
+// URLs for Keycloak depending on who's making the request:
+//   * Browser-facing (auth, logout): public URL like http://localhost:8080
+//   * Server-to-server (token, userinfo): in-network compose service name
+//
+// All these values are baked as placeholders here and overridden at RUNTIME
+// from the docker-compose `environment:` block via Nuxt's NUXT_<PATH>
+// runtimeConfig env-mapping. Computing them here at build time would freeze
+// in the wrong values because the build container has no .env loaded.
+//
+// Cookie.Secure: see comment on `cookieSecure` below.
 
-const realm = process.env.KEYCLOAK_REALM_NAME ?? 'social-login'
-const publicKc = process.env.FRONTEND_OIDC_KEYCLOAK_PUBLIC_URL
-  ?? process.env.KEYCLOAK_PUBLIC_URL
-  ?? 'http://localhost:8080'
-const internalKc = process.env.KEYCLOAK_INTERNAL_URL ?? publicKc
+const cookieSecure = (process.env.FRONTEND_PUBLIC_URL ?? '').startsWith('https://')
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
@@ -20,8 +21,8 @@ export default defineNuxtConfig({
   modules: ['nuxt-oidc-auth'],
 
   runtimeConfig: {
-    backendInternalUrl:
-      process.env.FRONTEND_BACKEND_INTERNAL_URL ?? 'http://localhost:8081',
+    // Overridden at runtime by NUXT_BACKEND_INTERNAL_URL (set in compose).
+    backendInternalUrl: '',
     public: {
       siteName: 'Social Login Demo',
     },
@@ -30,48 +31,44 @@ export default defineNuxtConfig({
   oidc: {
     defaultProvider: 'keycloak',
     middleware: {
-      // Fail-closed: every route requires auth by default. Routes that need
-      // to be public (e.g. the home page with the Login button) opt out via
-      // `definePageMeta({ oidcAuth: { enabled: false } })`.
+      // Fail-closed: every route requires auth by default. Public routes opt
+      // out via `definePageMeta({ oidcAuth: { enabled: false } })`.
       globalMiddlewareEnabled: true,
     },
     session: {
       automaticRefresh: true,
       expirationCheck: true,
+      cookie: {
+        sameSite: 'lax',
+        // Cookie.Secure requires HTTPS. On http://localhost browsers technically
+        // allow Secure cookies, but other dev hosts may not — derive from the
+        // public URL scheme so production behind HTTPS flips this on.
+        secure: cookieSecure,
+      },
     },
     providers: {
+      // Every URL/secret here is a placeholder. The real values come from
+      // docker-compose's NUXT_OIDC_PROVIDERS_KEYCLOAK_* env vars at runtime.
       keycloak: {
-        clientId: process.env.NUXT_OIDC_PROVIDERS_KEYCLOAK_CLIENT_ID ?? '',
-        clientSecret:
-          process.env.NUXT_OIDC_PROVIDERS_KEYCLOAK_CLIENT_SECRET ?? '',
-        redirectUri:
-          process.env.FRONTEND_OIDC_REDIRECT_URI
-          ?? 'http://localhost:3000/auth/keycloak/callback',
-        logoutRedirectUri:
-          process.env.FRONTEND_OIDC_POST_LOGOUT_REDIRECT_URI
-          ?? 'http://localhost:3000/',
-        // Browser-facing.
-        authorizationUrl: `${publicKc}/realms/${realm}/protocol/openid-connect/auth`,
-        logoutUrl: `${publicKc}/realms/${realm}/protocol/openid-connect/logout`,
-        // Server-to-server (BFF → Keycloak).
-        tokenUrl: `${internalKc}/realms/${realm}/protocol/openid-connect/token`,
-        userInfoUrl: `${internalKc}/realms/${realm}/protocol/openid-connect/userinfo`,
+        clientId: '',
+        clientSecret: '',
+        redirectUri: '',
+        logoutRedirectUri: '',
+        authorizationUrl: '',
+        tokenUrl: '',
+        userInfoUrl: '',
+        logoutUrl: '',
         scope: ['openid', 'profile', 'email'],
         // The backend re-validates every JWT against the realm's JWKS, so
         // skipping validation here is not a security gap — but it does
-        // remove one layer of defense-in-depth and slows failure on any
-        // future misconfig. Re-enabling requires overriding the lib's
-        // `openIdConfiguration` to use the internal URL instead of the
-        // (split) baseUrl. Tracked in docs/bff-token-validation.md.
+        // remove one layer of defense-in-depth. Tracked in
+        // docs/bff-token-validation.md.
         validateAccessToken: false,
         validateIdToken: false,
         // Strict BFF: the access token never appears in the session payload
         // returned to the browser. /api/me proxies via a server route that
-        // decrypts the persistent session storage.
+        // decrypts the persistent oidc storage.
         exposeAccessToken: false,
-        // exposeIdToken stays at the keycloak preset default (true) so the
-        // logout handler can attach it as `id_token_hint`. The id token only
-        // carries identity claims, not API authorization.
       },
     },
   },

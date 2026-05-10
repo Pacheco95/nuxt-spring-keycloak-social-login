@@ -46,14 +46,17 @@ You must do this once before the social login can work end-to-end.
 cp .env.example .env
 ```
 
-Edit `.env` and fill in **at minimum** the four blank values:
+Edit `.env` and fill in **at minimum** the five blank values:
 
 | Variable                       | What goes here                                                                           |
 |--------------------------------|------------------------------------------------------------------------------------------|
 | `GOOGLE_CLIENT_ID`             | The Client ID from step 1                                                                |
 | `GOOGLE_CLIENT_SECRET`         | The Client secret from step 1                                                            |
-| `FRONTEND_SESSION_PASSWORD`    | A random string ≥ 48 chars. Generate with `openssl rand -base64 36`                      |
+| `FRONTEND_SESSION_SECRET`      | Random string ≥ 48 chars (sealed cookies). Generate with `openssl rand -base64 36`       |
+| `FRONTEND_TOKEN_KEY`           | Base64 of **exactly** 32 bytes (AES-256-GCM key). Generate with `openssl rand -base64 32` |
 | `KEYCLOAK_REALM_CLIENT_SECRET` | Any random string ≥ 32 chars. Generate with `openssl rand -base64 24`                    |
+
+`FRONTEND_TOKEN_KEY` is *not* the same as `FRONTEND_SESSION_SECRET` — the token key encrypts access tokens at rest with AES-256-GCM, which strictly requires a 32-byte key. Re-using the longer session secret causes login to fail with `Data provided to an operation does not meet requirements` when the BFF tries to encrypt the token after a successful Google sign-in.
 
 The other secrets (`KEYCLOAK_ADMIN_PASSWORD`, `*_DB_PASSWORD`, `PGADMIN_DEFAULT_PASSWORD`) come pre-blank so you can fill them with sensible local values — defaults of `admin` / `keycloak` / `backend` are fine for local development. **Do not use any of these in production.**
 
@@ -160,7 +163,17 @@ If you change either value (e.g. to use a different host port), you must change 
 
 ### Sessions disappear every time I rebuild the frontend
 
-Your `FRONTEND_SESSION_PASSWORD` is shorter than 48 characters. The lib silently falls back to a random secret each restart, which invalidates all existing session cookies. Generate a longer one with `openssl rand -base64 36`.
+Your `FRONTEND_SESSION_SECRET` is shorter than 48 characters. The lib silently falls back to a random secret each restart, which invalidates all existing session cookies. Generate a longer one with `openssl rand -base64 36`.
+
+### Login completes at Google but the BFF returns 500 on the callback
+
+`POST /auth/keycloak/callback` returning 500 with the server log saying `Data provided to an operation does not meet requirements` means `FRONTEND_TOKEN_KEY` is not a valid AES-256-GCM key. It must base64-decode to **exactly** 32 bytes. Regenerate with:
+
+```bash
+openssl rand -base64 32   # 44-character string, decodes to 32 bytes
+```
+
+Don't re-use `FRONTEND_SESSION_SECRET` — that one is intentionally longer and won't satisfy AES's strict length requirement.
 
 ### Keycloak fails to start with `password authentication failed for user "keycloak"` (or `"backend"`)
 

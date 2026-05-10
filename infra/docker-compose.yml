@@ -146,18 +146,26 @@ services:
       NUXT_HOST: 0.0.0.0
       NUXT_PORT: ${FRONTEND_HTTP_PORT}
       NUXT_PUBLIC_BASE_URL: ${FRONTEND_PUBLIC_URL}
-      NUXT_OIDC_SESSION_SECRET: ${FRONTEND_SESSION_PASSWORD}
-      NUXT_OIDC_AUTH_SESSION_SECRET: ${FRONTEND_SESSION_PASSWORD}
-      NUXT_OIDC_TOKEN_KEY: ${FRONTEND_SESSION_PASSWORD}
+      NUXT_OIDC_SESSION_SECRET: ${FRONTEND_SESSION_SECRET}
+      NUXT_OIDC_AUTH_SESSION_SECRET: ${FRONTEND_SESSION_SECRET}
+      # Must be base64 of exactly 32 bytes (AES-256-GCM key).
+      NUXT_OIDC_TOKEN_KEY: ${FRONTEND_TOKEN_KEY}
+      # Per-provider OIDC config — passed using Nuxt's NUXT_<PATH> mapping so
+      # runtimeConfig.oidc.providers.keycloak.* is overridden at runtime.
+      # Build-time values in nuxt.config.ts are placeholders; the real URLs
+      # come from here, where we can use compose's ${...} interpolation.
       NUXT_OIDC_PROVIDERS_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_REALM_CLIENT_ID}
       NUXT_OIDC_PROVIDERS_KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_REALM_CLIENT_SECRET}
-      KEYCLOAK_PUBLIC_URL: ${FRONTEND_OIDC_KEYCLOAK_PUBLIC_URL}
-      # Internal URLs are derived from compose service names + container ports.
-      KEYCLOAK_INTERNAL_URL: http://keycloak:${KEYCLOAK_HTTP_PORT}
-      FRONTEND_BACKEND_INTERNAL_URL: http://backend:${BACKEND_HTTP_PORT}
-      KEYCLOAK_REALM_NAME: ${KEYCLOAK_REALM_NAME}
-      FRONTEND_OIDC_REDIRECT_URI: ${FRONTEND_OIDC_REDIRECT_URI}
-      FRONTEND_OIDC_POST_LOGOUT_REDIRECT_URI: ${FRONTEND_OIDC_POST_LOGOUT_REDIRECT_URI}
+      NUXT_OIDC_PROVIDERS_KEYCLOAK_REDIRECT_URI: ${FRONTEND_OIDC_REDIRECT_URI}
+      NUXT_OIDC_PROVIDERS_KEYCLOAK_LOGOUT_REDIRECT_URI: ${FRONTEND_OIDC_POST_LOGOUT_REDIRECT_URI}
+      # Browser-facing Keycloak URLs.
+      NUXT_OIDC_PROVIDERS_KEYCLOAK_AUTHORIZATION_URL: ${FRONTEND_OIDC_KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM_NAME}/protocol/openid-connect/auth
+      NUXT_OIDC_PROVIDERS_KEYCLOAK_LOGOUT_URL: ${FRONTEND_OIDC_KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM_NAME}/protocol/openid-connect/logout
+      # Server-to-server Keycloak URLs (BFF → Keycloak inside the docker network).
+      NUXT_OIDC_PROVIDERS_KEYCLOAK_TOKEN_URL: http://keycloak:${KEYCLOAK_HTTP_PORT}/realms/${KEYCLOAK_REALM_NAME}/protocol/openid-connect/token
+      NUXT_OIDC_PROVIDERS_KEYCLOAK_USER_INFO_URL: http://keycloak:${KEYCLOAK_HTTP_PORT}/realms/${KEYCLOAK_REALM_NAME}/protocol/openid-connect/userinfo
+      # /api/me proxy target — overrides runtimeConfig.backendInternalUrl.
+      NUXT_BACKEND_INTERNAL_URL: http://backend:${BACKEND_HTTP_PORT}
     depends_on:
       keycloak-realm-init:
         condition: service_completed_successfully
