@@ -13,12 +13,7 @@
     },
     "ghcr.io/shyim/devcontainers-features/bun:0": {}
   },
-  "forwardPorts": [3000, 8080, 8081],
-  "portsAttributes": {
-    "3000": { "label": "Nuxt BFF" },
-    "8080": { "label": "Keycloak" },
-    "8081": { "label": "Spring Boot API" }
-  },
+  "otherPortsAttributes": { "onAutoForward": "ignore" },
   "postCreateCommand": "cd frontend && bun install || true",
   "remoteUser": "vscode",
   "customizations": {
