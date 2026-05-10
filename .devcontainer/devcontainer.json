@@ -13,7 +13,6 @@
     },
     "ghcr.io/shyim/devcontainers-features/bun:0": {}
   },
-  "otherPortsAttributes": { "onAutoForward": "ignore" },
   "postCreateCommand": "cd frontend && bun install || true",
   "remoteUser": "vscode",
   "customizations": {

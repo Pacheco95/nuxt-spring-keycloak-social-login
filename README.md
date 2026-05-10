@@ -126,6 +126,15 @@ psql -h backend-db -U backend …            # reaches the backend Postgres
 
 Stopping the dev container does not stop the stack (and vice versa) — they're independent compose lifecycles that just happen to share a network. `make clean` still wipes everything.
 
+**Live dev (HMR / `bootRun`) and the host port collision.** The compose `frontend` and `backend` services publish to host:3000 and host:8081. If you start a dev server on the same port inside the workspace (`make dev-frontend`, `make dev-backend`) without stopping its compose counterpart first, your host browser at `localhost:3000` keeps hitting the production build in the compose container — the dev server is reachable only through VS Code's tunneled forwarding. Stop the compose service first:
+
+```bash
+docker compose -f infra/docker-compose.yml stop frontend   # or backend
+make dev-frontend                                          # now host:3000 is the dev server
+```
+
+VS Code auto-forwards the dev server's port to the host as soon as it sees the listener, so refreshing `localhost:3000` then hits the live dev server with HMR.
+
 **Compose-mode caveat.** The dev container's compose file (`.devcontainer/docker-compose.yml`) is intentionally standalone — it does *not* `include` `infra/docker-compose.yml`. Pulling infra in would force `${VAR}` interpolation on every service and require a `.env` symlinked into `infra/`. Sharing the network via matching project names gets us the same outcome with no env-file gymnastics.
 
 ## Common commands
