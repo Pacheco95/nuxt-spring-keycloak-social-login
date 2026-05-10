@@ -15,7 +15,7 @@ For deeper rationale (architecture decisions, locked-in tradeoffs, the issuer-pi
 - **Docker** with the Compose plugin (`docker compose version` should report v2+)
 - **Make** (any modern GNU make)
 - **A Google Cloud project** with an OAuth 2.0 Client ID — [walkthrough below](#1-create-a-google-oauth-client)
-- For local development without docker (optional): JDK 24, Bun ≥ 1.0
+- For host-side dev (running backend/frontend live, not in compose): JDK 24 + Bun ≥ 1.0, **or** the [dev container](#using-the-dev-container) (no host install needed)
 
 ## First-time setup
 
@@ -102,6 +102,31 @@ make realm-reset
 ```
 
 This drops the realm and re-runs the bootstrap so the Google identity provider gets registered.
+
+## Using the dev container
+
+If you'd rather not install JDK 24 and Bun on your host, the repo ships a [Dev Container](https://containers.dev/) under `.devcontainer/`. It provides a Debian-based workspace with Temurin 24 (via SDKMAN), Bun, and the Docker CLI — joined to the same `social-login` docker network that `make up` creates, so processes you start inside it can reach Keycloak, the DBs, etc. by service name.
+
+You still need Docker and Make on the host. Everything else lives in the container.
+
+**Open it:**
+
+- **VS Code / Cursor** — install the *Dev Containers* extension, then run `Dev Containers: Reopen in Container` from the command palette (`Cmd/Ctrl+Shift+P`).
+- **CLI** — `devcontainer up --workspace-folder .` (requires the [`@devcontainers/cli`](https://github.com/devcontainers/cli) npm package).
+
+The first launch installs the JDK and Bun features and takes ~2 minutes. Subsequent opens are seconds.
+
+**Inside the workspace** the regular workflow applies — `make up`, `./gradlew bootRun`, `bun run dev`, etc. The workspace and `make up` share the docker network because both compose invocations use `name: social-login`, so:
+
+```bash
+# from a terminal inside the workspace, after `make up`:
+curl http://keycloak:8080/health/ready    # reaches the keycloak container
+psql -h backend-db -U backend …            # reaches the backend Postgres
+```
+
+Stopping the dev container does not stop the stack (and vice versa) — they're independent compose lifecycles that just happen to share a network. `make clean` still wipes everything.
+
+**Compose-mode caveat.** The dev container's compose file (`.devcontainer/docker-compose.yml`) is intentionally standalone — it does *not* `include` `infra/docker-compose.yml`. Pulling infra in would force `${VAR}` interpolation on every service and require a `.env` symlinked into `infra/`. Sharing the network via matching project names gets us the same outcome with no env-file gymnastics.
 
 ## Common commands
 
