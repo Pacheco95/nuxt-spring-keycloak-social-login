@@ -210,6 +210,24 @@ Keycloak didn't come up in time. `make logs-keycloak` to see why — usually it'
 
 The realm-init bootstrap is **idempotent per entity** (realm, client, mappers, IdP), but it doesn't *update* anything that already exists. If you need to change realm-level settings, run `make realm-reset` to drop and re-bootstrap.
 
+### "Login with Google" redirects to `localhost:9000` and the page can't be reached
+
+You ran `make test-e2e` (or `make test-e2e-up`) before. That target's `keycloak-test-config` step **rewrites** the realm's `google` IdP to point at the in-network `mock-google` service on `localhost:9000` — see `infra/keycloak/test-config/configure-mock-idp.sh`. The swap is persisted in the `keycloak-db-data` volume, so it survives `make test-e2e-down` and `make down`.
+
+When you then bring the production stack back up with `make up`, `mock-google` is gone but the realm still has `authorizationUrl=http://localhost:9000/authorize`, so clicking Login redirects the browser to a port nothing is listening on.
+
+Fix: re-run the production bootstrap.
+
+```bash
+make realm-reset    # drops the realm and re-creates the real Google IdP from .env
+```
+
+If you want a clean slate (also wipes both DB volumes):
+
+```bash
+make clean && make up
+```
+
 ## Security posture
 
 - Tokens never reach the browser. The BFF stores access/refresh tokens encrypted in server-side storage and forwards them to the backend over the in-network connection. The browser only ever sees an HttpOnly, SameSite=Lax session cookie.

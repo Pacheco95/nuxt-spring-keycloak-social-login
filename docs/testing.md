@@ -25,6 +25,8 @@ Browser-driven Playwright tests of the full user journey, end-to-end. The trick:
 - `mock-google` — a tiny Node container running [`oauth2-mock-server`](https://github.com/axa-group/oauth2-mock-server). Issues ID tokens with Google-shaped claims (`email`, `email_verified`, `name`, `given_name`, `family_name`, `picture`) for a fixed fixture user. Auto-approves at `/authorize`. Serves a 1×1 transparent PNG so the avatar `<img>` actually loads.
 - `keycloak-test-config` — one-shot that runs after `keycloak-realm-init` and **swaps** the `google` IdP. The original (production) IdP has `providerId: google` and is hardcoded to talk to `accounts.google.com`. The replacement uses `providerId: oidc` with the same alias, configured against the mock URLs. Same `kc_idp_hint=google` plumbing on the BFF side keeps working unchanged.
 
+> ⚠️ **The swap persists in the `keycloak-db-data` volume.** `make test-e2e-down` and `make down` stop the containers but do not revert the realm — so a subsequent `make up` will still have `google` pointed at `http://localhost:9000`, and clicking Login from a browser will fail because `mock-google` is no longer running. To return to the production Google IdP, run `make realm-reset` (or `make clean` to wipe everything). See the README troubleshooting section for the full reproducer.
+
 The hostname split is the same as the real Keycloak setup: the mock's `iss` claim is pinned to `http://localhost:9000` (browser-visible), but Keycloak fetches `/token`, `/userinfo`, and `/jwks` via the in-network compose service name `mock-google:9000`. See `CLAUDE.md` for the broader rationale.
 
 Specs (`e2e/tests/`):
