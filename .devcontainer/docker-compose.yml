@@ -25,3 +25,10 @@ services:
     volumes:
       - ..:/workspaces/social-login:cached
     networks: [social-login]
+    environment:
+      # Force file-watching to use polling. inotify events on docker bind
+      # mounts are unreliable, so Vite (Nuxt) and chokidar miss source
+      # edits and HMR silently no-ops. Polling has a small CPU cost but
+      # is the standard workaround for dev-in-container.
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
