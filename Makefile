@@ -17,7 +17,7 @@ endif
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up up-build down restart ps logs logs-backend logs-frontend logs-keycloak \
+.PHONY: help up up-infra up-build down restart ps logs logs-backend logs-frontend logs-keycloak \
         build clean realm-reset test test-backend test-stack test-e2e test-e2e-up test-e2e-down \
         dev-backend dev-frontend shell-backend shell-frontend db-keycloak db-backend
 
@@ -29,6 +29,9 @@ help: ## Show available targets
 # ── Lifecycle ─────────────────────────────────────────────────────────────
 up: ## Start the full stack in the background
 	$(COMPOSE) up -d
+
+up-infra: ## Start only infra (DBs, Keycloak, realm-init, pgadmin) — pair with make dev-backend / dev-frontend
+	$(COMPOSE) up -d keycloak-db backend-db keycloak keycloak-realm-init pgadmin
 
 up-build: ## Rebuild local images and start the stack
 	$(COMPOSE) up -d --build
@@ -72,10 +75,69 @@ realm-reset: ## Drop the realm and re-run bootstrap (use after editing .env Goog
 
 # ── Local-host development (no docker) ────────────────────────────────────
 dev-backend: ## Run the backend on the host with gradle bootRun (live reload)
-	cd $(ROOT)backend && ./gradlew --no-daemon bootRun
+	@# Spring's datasource/JWKS config only exists as a mapping inside the
+	@# `backend` block of infra/docker-compose.yml. Running bootRun directly
+	@# bypasses that, so re-create the same mapping here from .env.
+	@#
+	@# Host vs devcontainer: same idea as dev-frontend — host reaches the DBs
+	@# / Keycloak on their published localhost ports, devcontainer reaches
+	@# them by service name on their in-network ports. JWT issuer URI stays
+	@# pinned to KEYCLOAK_HOSTNAME (browser-facing) in both modes — Keycloak
+	@# issues that value regardless of backchannel path.
+	@if [ -f /.dockerenv ]; then \
+		DB_HOST=backend-db; DB_PORT=$(BACKEND_DB_PORT); \
+		KC_HOST=keycloak;   KC_PORT=$(KEYCLOAK_HTTP_PORT); \
+	else \
+		DB_HOST=localhost;  DB_PORT=$(BACKEND_DB_HOST_PORT); \
+		KC_HOST=localhost;  KC_PORT=$(KEYCLOAK_HTTP_HOST_PORT); \
+	fi; \
+	cd $(ROOT)backend && \
+	SERVER_PORT="$(BACKEND_HTTP_PORT)" \
+	SPRING_DATASOURCE_URL="jdbc:postgresql://$$DB_HOST:$$DB_PORT/$(BACKEND_DB_NAME)" \
+	SPRING_DATASOURCE_USERNAME="$(BACKEND_DB_USER)" \
+	SPRING_DATASOURCE_PASSWORD="$(BACKEND_DB_PASSWORD)" \
+	SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI="$(BACKEND_OIDC_ISSUER_URI)" \
+	SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI="http://$$KC_HOST:$$KC_PORT/realms/$(KEYCLOAK_REALM_NAME)/protocol/openid-connect/certs" \
+	LOGGING_LEVEL_ROOT="$(BACKEND_LOG_LEVEL)" \
+	./gradlew --no-daemon bootRun
 
 dev-frontend: ## Run the frontend on the host with bun (live reload)
-	cd $(ROOT)frontend && bun run dev
+	@# The NUXT_OIDC_* env vars only exist as a mapping inside the `frontend`
+	@# block of infra/docker-compose.yml. Running `bun run dev` directly
+	@# bypasses that, so we re-create the same mapping here from the
+	@# FRONTEND_*/KEYCLOAK_* source-of-truth values in .env.
+	@#
+	@# Host vs devcontainer: from the host we reach Keycloak/backend on their
+	@# published localhost ports; from inside the social-login compose network
+	@# (devcontainer) we reach them by service name on their in-network ports.
+	@# Keycloak's `iss` is pinned to KEYCLOAK_HOSTNAME either way, so a
+	@# service-name backchannel does not break issuer validation.
+	@# Backend host is always `localhost` because `make dev-backend` runs
+	@# bootRun in the same place as `make dev-frontend` (devcontainer
+	@# workspace, or the host). Don't use the compose service name even in
+	@# devcontainer mode — the `backend` container only exists under
+	@# `make up`, not under the dev-server workflow (`make up-infra`).
+	@if [ -f /.dockerenv ]; then \
+		KC_HOST=keycloak; KC_PORT=$(KEYCLOAK_HTTP_PORT); \
+	else \
+		KC_HOST=localhost; KC_PORT=$(KEYCLOAK_HTTP_HOST_PORT); \
+	fi; \
+	BE_HOST=localhost; BE_PORT=$(BACKEND_HTTP_PORT); \
+	cd $(ROOT)frontend && \
+	NUXT_OIDC_SESSION_SECRET="$(FRONTEND_SESSION_SECRET)" \
+	NUXT_OIDC_AUTH_SESSION_SECRET="$(FRONTEND_SESSION_SECRET)" \
+	NUXT_OIDC_TOKEN_KEY="$(FRONTEND_TOKEN_KEY)" \
+	NUXT_OIDC_PROVIDERS_KEYCLOAK_CLIENT_ID="$(KEYCLOAK_REALM_CLIENT_ID)" \
+	NUXT_OIDC_PROVIDERS_KEYCLOAK_CLIENT_SECRET="$(KEYCLOAK_REALM_CLIENT_SECRET)" \
+	NUXT_OIDC_PROVIDERS_KEYCLOAK_REDIRECT_URI="$(FRONTEND_OIDC_REDIRECT_URI)" \
+	NUXT_OIDC_PROVIDERS_KEYCLOAK_LOGOUT_REDIRECT_URI="$(FRONTEND_OIDC_POST_LOGOUT_REDIRECT_URI)" \
+	NUXT_OIDC_PROVIDERS_KEYCLOAK_CALLBACK_REDIRECT_URL=/profile \
+	NUXT_OIDC_PROVIDERS_KEYCLOAK_AUTHORIZATION_URL="$(FRONTEND_OIDC_KEYCLOAK_PUBLIC_URL)/realms/$(KEYCLOAK_REALM_NAME)/protocol/openid-connect/auth?kc_idp_hint=google" \
+	NUXT_OIDC_PROVIDERS_KEYCLOAK_LOGOUT_URL="$(FRONTEND_OIDC_KEYCLOAK_PUBLIC_URL)/realms/$(KEYCLOAK_REALM_NAME)/protocol/openid-connect/logout" \
+	NUXT_OIDC_PROVIDERS_KEYCLOAK_TOKEN_URL="http://$$KC_HOST:$$KC_PORT/realms/$(KEYCLOAK_REALM_NAME)/protocol/openid-connect/token" \
+	NUXT_OIDC_PROVIDERS_KEYCLOAK_USER_INFO_URL="http://$$KC_HOST:$$KC_PORT/realms/$(KEYCLOAK_REALM_NAME)/protocol/openid-connect/userinfo" \
+	NUXT_BACKEND_INTERNAL_URL="http://$$BE_HOST:$$BE_PORT" \
+	bun run dev
 
 test-backend: ## Run backend test suite on the host
 	cd $(ROOT)backend && ./gradlew --no-daemon test

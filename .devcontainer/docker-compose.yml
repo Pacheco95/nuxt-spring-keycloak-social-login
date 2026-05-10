@@ -32,3 +32,22 @@ services:
       # is the standard workaround for dev-in-container.
       CHOKIDAR_USEPOLLING: "true"
       WATCHPACK_POLLING: "true"
+      # Bind dev servers to all interfaces so the published ports below
+      # actually reach them. Nuxt defaults to 127.0.0.1; Spring already
+      # binds 0.0.0.0 so this only matters for the BFF.
+      NUXT_HOST: "0.0.0.0"
+    # Publish dev-server ports straight to the host instead of relying on
+    # VS Code's auto-forward tunnel. The tunnel works for plain GETs but
+    # can mishandle OAuth's form_post callback / WebSocket upgrades, which
+    # surfaces as "site can't be reached" on /auth/keycloak/callback and
+    # broken HMR. Direct publishing avoids that whole layer.
+    #
+    # Collision warning: these conflict with the compose `frontend` /
+    # `backend` services which also bind host:3000 / host:8081. That is
+    # fine under the `make up-infra` workflow (which deliberately skips
+    # those two), but `make up` (full stack) will fail to start frontend
+    # and backend while the devcontainer is running. Stop the devcontainer
+    # first, or stick to `make up-infra` + `make dev-*`.
+    ports:
+      - "3000:3000"  # nuxt dev (bun run dev)
+      - "8081:8081"  # spring boot dev (./gradlew bootRun)

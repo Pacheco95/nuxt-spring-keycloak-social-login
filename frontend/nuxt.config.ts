@@ -28,6 +28,18 @@ export default defineNuxtConfig({
     },
   },
 
+  // Dev-container HMR: file changes on the host bind-mount don't fire inotify
+  // events inside the container, so Vite's watcher must poll. The env vars
+  // CHOKIDAR_USEPOLLING / WATCHPACK_POLLING on the workspace service don't
+  // reliably reach Vite (it passes its own watch options to chokidar), so
+  // pin polling explicitly here. Harmless outside the container — costs a
+  // little CPU but no behavior change.
+  vite: {
+    server: {
+      watch: { usePolling: true, interval: 500 },
+    },
+  },
+
   oidc: {
     defaultProvider: 'keycloak',
     middleware: {
