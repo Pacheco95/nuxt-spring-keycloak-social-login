@@ -1,7 +1,11 @@
 {
   "name": "social-login",
-  "image": "mcr.microsoft.com/devcontainers/java:1-24-bookworm",
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
   "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "24-tem",
+      "installGradle": false
+    },
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
       "moby": false
     },
@@ -26,8 +30,9 @@
         "EditorConfig.EditorConfig"
       ],
       "settings": {
+        "java.jdt.ls.java.home": "/usr/local/sdkman/candidates/java/current",
         "java.configuration.runtimes": [
-          { "name": "JavaSE-24", "path": "/usr/lib/jvm/msopenjdk-current", "default": true }
+          { "name": "JavaSE-24", "path": "/usr/local/sdkman/candidates/java/current", "default": true }
         ],
         "files.eol": "\n"
       }
