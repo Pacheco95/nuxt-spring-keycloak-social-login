@@ -158,8 +158,16 @@ services:
       NUXT_OIDC_PROVIDERS_KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_REALM_CLIENT_SECRET}
       NUXT_OIDC_PROVIDERS_KEYCLOAK_REDIRECT_URI: ${FRONTEND_OIDC_REDIRECT_URI}
       NUXT_OIDC_PROVIDERS_KEYCLOAK_LOGOUT_REDIRECT_URI: ${FRONTEND_OIDC_POST_LOGOUT_REDIRECT_URI}
-      # Browser-facing Keycloak URLs.
-      NUXT_OIDC_PROVIDERS_KEYCLOAK_AUTHORIZATION_URL: ${FRONTEND_OIDC_KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM_NAME}/protocol/openid-connect/auth
+      # Where the BFF lands users after a successful OAuth callback. Set
+      # server-side (not via the per-login `?callbackRedirectUrl=` query
+      # param) because the lib's callback handler clears the auth session
+      # BEFORE reading the session-stored URL — so the query-param mechanism
+      # is broken and a server config is the only thing that takes effect.
+      NUXT_OIDC_PROVIDERS_KEYCLOAK_CALLBACK_REDIRECT_URL: /profile
+      # Browser-facing Keycloak URLs. kc_idp_hint=google skips Keycloak's
+      # IdP-chooser screen since Google is our only configured provider; the
+      # lib's `withQuery` preserves the hint when it appends OAuth params.
+      NUXT_OIDC_PROVIDERS_KEYCLOAK_AUTHORIZATION_URL: ${FRONTEND_OIDC_KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM_NAME}/protocol/openid-connect/auth?kc_idp_hint=google
       NUXT_OIDC_PROVIDERS_KEYCLOAK_LOGOUT_URL: ${FRONTEND_OIDC_KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM_NAME}/protocol/openid-connect/logout
       # Server-to-server Keycloak URLs (BFF → Keycloak inside the docker network).
       NUXT_OIDC_PROVIDERS_KEYCLOAK_TOKEN_URL: http://keycloak:${KEYCLOAK_HTTP_PORT}/realms/${KEYCLOAK_REALM_NAME}/protocol/openid-connect/token

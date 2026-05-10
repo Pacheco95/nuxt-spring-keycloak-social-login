@@ -27,14 +27,18 @@ const errorMessage = computed<string | null>(() => {
   }
 })
 
-// Story 002: after the OAuth flow completes, the BFF callback redirects to
-// this page — we want them on /profile instead. The login() composable
-// passes any extra params through to /auth/keycloak/login, where the
-// `callbackRedirectUrl` query param is honoured by the lib's callback
-// handler. Visiting / manually while already logged in stays on / (fixed
-// after the previous version auto-redirected and trapped the user there).
+// Story 002: after the OAuth flow, the user must land on /profile. The
+// post-callback target is set server-side via the provider's
+// `callbackRedirectUrl` config (NUXT_OIDC_PROVIDERS_KEYCLOAK_CALLBACK_REDIRECT_URL
+// in docker-compose.yml). We do NOT pass it as a per-login query param
+// because the lib clears the auth-session before reading it back from the
+// callback handler — the query-param mechanism is effectively dead.
+//
+// Skipping Keycloak's IdP-chooser screen (going straight to Google) is
+// handled by adding `?kc_idp_hint=google` to the authorize URL in
+// docker-compose.yml — the lib's `withQuery` preserves it.
 async function handleLogin() {
-  await login('keycloak', { callbackRedirectUrl: '/profile' })
+  await login('keycloak')
 }
 </script>
 

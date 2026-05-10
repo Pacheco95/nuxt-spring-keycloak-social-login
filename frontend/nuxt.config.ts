@@ -54,6 +54,11 @@ export default defineNuxtConfig({
         clientSecret: '',
         redirectUri: '',
         logoutRedirectUri: '',
+        // Pinned post-callback landing page. See docker-compose.yml comment
+        // explaining why the per-login query-param mechanism doesn't work
+        // (the lib clears the auth session before reading the URL out of
+        // it). Overridden at runtime via NUXT_OIDC_PROVIDERS_KEYCLOAK_CALLBACK_REDIRECT_URL.
+        callbackRedirectUrl: '/profile',
         authorizationUrl: '',
         tokenUrl: '',
         userInfoUrl: '',

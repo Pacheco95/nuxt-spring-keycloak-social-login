@@ -6,6 +6,7 @@
 
 ROOT := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 COMPOSE := docker compose -f $(ROOT)infra/docker-compose.yml --env-file $(ROOT).env
+COMPOSE_TEST := docker compose -f $(ROOT)infra/docker-compose.yml -f $(ROOT)infra/docker-compose.test.yml --env-file $(ROOT).env
 
 # Pull .env values into Make's environment so recipes can use $$VAR. The guard
 # avoids breaking targets like `help` on a fresh checkout where .env is missing.
@@ -17,8 +18,8 @@ endif
 .DEFAULT_GOAL := help
 
 .PHONY: help up up-build down restart ps logs logs-backend logs-frontend logs-keycloak \
-        build clean realm-reset test-backend dev-backend dev-frontend \
-        shell-backend shell-frontend db-keycloak db-backend
+        build clean realm-reset test test-backend test-stack test-e2e test-e2e-up test-e2e-down \
+        dev-backend dev-frontend shell-backend shell-frontend db-keycloak db-backend
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*?## "; printf "Usage: make <target>\n\nTargets:\n"} \
@@ -78,6 +79,23 @@ dev-frontend: ## Run the frontend on the host with bun (live reload)
 
 test-backend: ## Run backend test suite on the host
 	cd $(ROOT)backend && ./gradlew --no-daemon test
+
+# ── Stack & e2e tests ─────────────────────────────────────────────────────
+test: test-stack test-e2e ## Run both tiers (stack smoke + e2e)
+
+test-stack: ## Tier 1: HTTP/JWT smoke against the running stack (~30s)
+	@bash $(ROOT)scripts/test-stack.sh
+
+test-e2e: test-e2e-up ## Tier 2: Playwright e2e against stack with mocked Google
+	cd $(ROOT)e2e && bun install --frozen-lockfile 2>/dev/null || (cd $(ROOT)e2e && bun install)
+	cd $(ROOT)e2e && bunx playwright install chromium
+	cd $(ROOT)e2e && bunx playwright test
+
+test-e2e-up: ## Bring up the stack with the test override + mock Google
+	$(COMPOSE_TEST) up -d --wait
+
+test-e2e-down: ## Tear down the test stack (drops mock-google and the IdP swap)
+	$(COMPOSE_TEST) down
 
 # ── Shells ────────────────────────────────────────────────────────────────
 shell-backend: ## Open a shell in the running backend container

@@ -127,6 +127,18 @@ make db-keycloak  # psql into the Keycloak DB
 make db-backend   # psql into the backend DB
 ```
 
+## Running tests
+
+Two tiers — full details in [`docs/testing.md`](./docs/testing.md):
+
+```bash
+make test-stack   # Tier 1: ~30s HTTP/JWT smoke (no browser)
+make test-e2e     # Tier 2: Playwright browser-driven journey with a mock Google
+make test         # Both
+```
+
+Tier 2 swaps Google for a local mock OIDC server inside the docker network, so the entire login → profile → logout journey runs hermetically — no Google account needed, no internet required, fully deterministic.
+
 ## Project structure
 
 ```
@@ -138,7 +150,11 @@ make db-backend   # psql into the backend DB
 │   ├── keycloak/realm-init # one-shot bootstrap container (kcadm.sh)
 │   └── pgadmin             # auto-loaded servers.json + entrypoint shim
 ├── docs/
-│   └── bff-token-validation.md  # known-issue: BFF skips JWT validation (defense-in-depth gap, not a vuln)
+│   ├── bff-token-validation.md  # known-issue: BFF skips JWT validation (defense-in-depth gap, not a vuln)
+│   └── testing.md               # the two test tiers and the mock-IdP design
+├── e2e/                    # Playwright e2e suite (browser-driven)
+├── scripts/
+│   └── test-stack.sh       # bash smoke (~30s, no browser)
 ├── .env.example            # commit this with secrets blanked
 ├── .env                    # gitignored; your local values
 ├── Makefile                # `make help` for targets

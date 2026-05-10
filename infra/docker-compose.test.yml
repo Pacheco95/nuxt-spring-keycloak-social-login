@@ -1,0 +1,56 @@
+# Test-mode override layered on top of docker-compose.yml.
+# Use:  docker compose -f docker-compose.yml -f docker-compose.test.yml up -d
+#
+# Adds:
+#   * mock-google: a tiny OIDC server standing in for accounts.google.com
+#   * keycloak-test-config: one-shot that re-points Keycloak's "google" IdP
+#     at the mock (replaces the production Google IdP type with a generic
+#     OIDC one, same alias)
+#
+# Why hostname split: the mock's iss claim is pinned to the public URL
+# (browser-visible), but Keycloak server-to-server fetches the token /
+# userinfo / jwks via the in-network compose service name. Same hostname-
+# pinning trick used for real Keycloak.
+
+services:
+  mock-google:
+    build: ./mock-google
+    restart: unless-stopped
+    environment:
+      MOCK_GOOGLE_PORT: ${MOCK_GOOGLE_PORT:-9000}
+      MOCK_GOOGLE_PUBLIC_URL: http://localhost:${MOCK_GOOGLE_HOST_PORT:-9000}
+    ports:
+      - "${MOCK_GOOGLE_HOST_PORT:-9000}:${MOCK_GOOGLE_PORT:-9000}"
+    networks: [social-login]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:${MOCK_GOOGLE_PORT:-9000}/.well-known/openid-configuration"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  keycloak-test-config:
+    build: ./keycloak/test-config
+    restart: "no"
+    environment:
+      KEYCLOAK_INTERNAL_URL: http://keycloak:${KEYCLOAK_HTTP_PORT}
+      KEYCLOAK_ADMIN_USER: ${KEYCLOAK_ADMIN_USER}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_REALM_NAME: ${KEYCLOAK_REALM_NAME}
+      MOCK_GOOGLE_PUBLIC_URL: http://localhost:${MOCK_GOOGLE_HOST_PORT:-9000}
+      MOCK_GOOGLE_INTERNAL_URL: http://mock-google:${MOCK_GOOGLE_PORT:-9000}
+    depends_on:
+      keycloak-realm-init:
+        condition: service_completed_successfully
+      mock-google:
+        condition: service_healthy
+    networks: [social-login]
+
+  # Frontend must wait for the test-config swap before it can serve the
+  # OAuth flow against the mock — without this the first e2e test would
+  # race the IdP swap.
+  frontend:
+    depends_on:
+      keycloak-test-config:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
