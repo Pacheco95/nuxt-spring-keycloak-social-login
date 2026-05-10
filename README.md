@@ -162,6 +162,17 @@ If you change either value (e.g. to use a different host port), you must change 
 
 Your `FRONTEND_SESSION_PASSWORD` is shorter than 48 characters. The lib silently falls back to a random secret each restart, which invalidates all existing session cookies. Generate a longer one with `openssl rand -base64 36`.
 
+### Keycloak fails to start with `password authentication failed for user "keycloak"` (or `"backend"`)
+
+You changed a `*_DB_PASSWORD` in `.env` after the database volume was already created. Postgres only initialises credentials on **first volume creation** — once the volume exists, the in-database password is locked to whatever was set the first time, and the new value in `.env` no longer matches.
+
+```bash
+make clean   # ⚠️  wipes both DB volumes
+make up
+```
+
+`make clean` is destructive. If you have data you care about in either DB, dump it first (e.g. `docker compose exec keycloak-db pg_dump ...`) and restore after.
+
 ### Realm-init fails with "could not authenticate after 60 attempts"
 
 Keycloak didn't come up in time. `make logs-keycloak` to see why — usually it's the keycloak-db not being ready yet (despite the healthcheck), or the admin credentials being wrong. Confirm `KEYCLOAK_ADMIN_USER` and `KEYCLOAK_ADMIN_PASSWORD` in `.env` match what you expect, then `make restart`.
