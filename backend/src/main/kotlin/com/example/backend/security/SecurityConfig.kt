@@ -8,7 +8,7 @@ import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.web.SecurityFilterChain
 
 @Configuration
-class SecurityConfig {
+class SecurityConfig(private val jwtUserUpsertConverter: JwtUserUpsertConverter) {
 
   @Bean
   fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
@@ -25,7 +25,9 @@ class SecurityConfig {
           .anyRequest()
           .authenticated()
       }
-      .oauth2ResourceServer { resourceServer -> resourceServer.jwt {} }
+      .oauth2ResourceServer { resourceServer ->
+        resourceServer.jwt { it.jwtAuthenticationConverter(jwtUserUpsertConverter) }
+      }
     return http.build()
   }
 }
