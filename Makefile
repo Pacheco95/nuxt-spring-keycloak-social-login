@@ -18,7 +18,7 @@ endif
 .DEFAULT_GOAL := help
 
 .PHONY: help up up-infra up-build down restart ps logs logs-backend logs-frontend logs-keycloak \
-        build clean realm-reset test test-backend test-stack test-e2e test-e2e-up test-e2e-down \
+        build clean realm-reset test test-backend test-stack test-e2e test-e2e-up test-e2e-down test-clean \
         dev-backend dev-frontend shell-backend shell-frontend db-keycloak db-backend \
         format format-check format-frontend format-check-frontend \
         format-backend format-check-backend lint lint-fix
@@ -184,6 +184,9 @@ test-e2e-up: ## Bring up the stack with the test override + mock Google
 
 test-e2e-down: ## Tear down the test stack (drops mock-google and the IdP swap)
 	$(COMPOSE_TEST) down
+
+test-clean: test-e2e-down ## Tear down the test stack and delete Playwright report/results
+	rm -rf $(ROOT)e2e/playwright-report $(ROOT)e2e/test-results
 
 # ── Shells ────────────────────────────────────────────────────────────────
 shell-backend: ## Open a shell in the running backend container
