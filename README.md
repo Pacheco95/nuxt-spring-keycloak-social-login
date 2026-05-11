@@ -183,9 +183,31 @@ Two tiers — full details in [`docs/testing.md`](./docs/testing.md):
 make test-stack   # Tier 1: ~30s HTTP/JWT smoke (no browser)
 make test-e2e     # Tier 2: Playwright browser-driven journey with a mock Google
 make test         # Both
+make test-clean   # Tear down the test stack and remove e2e/playwright-report, e2e/test-results
 ```
 
 Tier 2 swaps Google for a local mock OIDC server inside the docker network, so the entire login → profile → logout journey runs hermetically — no Google account needed, no internet required, fully deterministic.
+
+### How to run them properly
+
+Both tiers hit `http://localhost:…` directly (Keycloak `:8080`, backend `:8081`, BFF `:3000`, pgadmin `:5050`). That has three consequences:
+
+1. **Run from the host shell, not the devcontainer.** Inside the devcontainer, `localhost` is the workspace's own loopback and does not reach the host-published compose ports.
+2. **Bring the full stack up first with `make up`, not `make up-infra`.** Tier 1 expects the compose `frontend` and `backend` services to be running; `make up-infra` doesn't start them. Tier 2 then layers the test override (mock-google + IdP swap) on top of an already-running stack.
+3. **Stop the devcontainer first if it's running.** It publishes `:3000` / `:8081` for the dev servers and will collide with the compose `frontend` / `backend` services. From the host: `docker stop social-login-workspace-1`.
+
+The happy path:
+
+```bash
+# from the host shell, devcontainer stopped
+make up
+make test
+make test-clean   # before next test run, or before going back to make up
+```
+
+> ⚠️ `make test-clean` (and `make test-e2e-down`) issue `docker compose down` across both `docker-compose.yml` *and* `docker-compose.test.yml`, which tears down the **whole** stack — not just the test-only services. Run `make up` again afterwards.
+
+If you only want the backend unit tests (no stack required), use `make test-backend` — that runs `./gradlew test` and works from anywhere with a JDK 24.
 
 ## Project structure
 
