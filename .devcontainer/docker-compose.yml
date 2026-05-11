@@ -23,7 +23,12 @@ services:
     init: true
     command: sleep infinity
     volumes:
-      - ..:/workspaces/social-login:cached
+      # Mount the project at the SAME absolute path inside the container as on
+      # the host. Required for docker-outside-of-docker: when compose inside
+      # this container asks the host daemon to bind-mount ./infra/..., the path
+      # must resolve identically on both sides. LOCAL_WORKSPACE_FOLDER is
+      # written to .devcontainer/.env by devcontainer.json's initializeCommand.
+      - ${LOCAL_WORKSPACE_FOLDER}:${LOCAL_WORKSPACE_FOLDER}:cached
     networks: [social-login]
     environment:
       # Force file-watching to use polling. inotify events on docker bind

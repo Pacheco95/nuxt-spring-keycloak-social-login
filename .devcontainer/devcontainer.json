@@ -2,7 +2,13 @@
   "name": "social-login",
   "dockerComposeFile": "docker-compose.yml",
   "service": "workspace",
-  "workspaceFolder": "/workspaces/social-login",
+  // Mount the project at the same path inside the container as on the host so
+  // that bind paths in infra/docker-compose.yml resolve correctly when `make up-*`
+  // is invoked from inside the devcontainer (docker-outside-of-docker hits the
+  // host daemon, which only knows host paths). The host path is propagated to
+  // the compose file via .devcontainer/.env written by initializeCommand.
+  "workspaceFolder": "${localWorkspaceFolder}",
+  "initializeCommand": "echo \"LOCAL_WORKSPACE_FOLDER=${localWorkspaceFolder}\" > .devcontainer/.env",
   "features": {
     "ghcr.io/devcontainers/features/java:1": {
       "version": "24-tem",
