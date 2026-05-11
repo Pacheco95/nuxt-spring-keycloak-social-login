@@ -105,7 +105,7 @@ This drops the realm and re-runs the bootstrap so the Google identity provider g
 
 ## Using the dev container
 
-If you'd rather not install JDK 24 and Bun on your host, the repo ships a [Dev Container](https://containers.dev/) under `.devcontainer/`. It provides a Debian-based workspace with Temurin 24 (via SDKMAN), Bun, and the Docker CLI — joined to the same `social-login` docker network that `make up` creates, so processes you start inside it can reach Keycloak, the DBs, etc. by service name.
+If you'd rather not install JDK 24 and Bun on your host, the repo ships a [Dev Container](https://containers.dev/) under `.devcontainer/`. It provides a Debian-based workspace with Temurin 24 (via SDKMAN), Bun, and the Docker CLI, joined to the same `social-login` docker network that the infra stack uses. The workspace publishes host `:3000` and `:8081` directly, so your browser hits the dev servers without any VS Code tunneling in the path.
 
 You still need Docker and Make on the host. Everything else lives in the container.
 
@@ -116,33 +116,47 @@ You still need Docker and Make on the host. Everything else lives in the contain
 
 The first launch installs the JDK and Bun features and takes ~2 minutes. Subsequent opens are seconds.
 
-**Inside the workspace** the regular workflow applies — `make up`, `./gradlew bootRun`, `bun run dev`, etc. The workspace and `make up` share the docker network because both compose invocations use `name: social-login`, so:
+### Workflow inside the devcontainer
+
+The devcontainer flow is **different from the host flow**. Instead of `make up` (which runs *every* service in compose, including production builds of the frontend and backend), you run only the supporting infra in compose and the two apps as live-reload dev servers inside the workspace:
 
 ```bash
-# from a terminal inside the workspace, after `make up`:
-curl http://keycloak:8080/health/ready    # reaches the keycloak container
-psql -h backend-db -U backend …            # reaches the backend Postgres
+make up-infra      # DBs, Keycloak, realm-init, pgadmin — leave running
+make dev-backend   # in one terminal — ./gradlew bootRun
+make dev-frontend  # in another terminal — nuxt dev (HMR)
 ```
 
-Stopping the dev container does not stop the stack (and vice versa) — they're independent compose lifecycles that just happen to share a network. `make clean` still wipes everything.
+`make dev-backend` / `make dev-frontend` re-create the same env mapping the compose `backend` / `frontend` services receive (Spring datasource, JWKS URI, `NUXT_OIDC_*`, etc.), sourced from `.env` and rewritten for in-workspace addressing. **Run them through `make`** — raw `./gradlew bootRun` or `bun run dev` will fail (Spring with `Connection to localhost:5432 refused`, Nuxt with `No ... secret set, using a random secret` warnings and a broken OAuth flow).
 
-**Live dev (HMR / `bootRun`) and the host port collision.** The compose `frontend` and `backend` services publish to host:3000 and host:8081. If you start a dev server on the same port inside the workspace (`make dev-frontend`, `make dev-backend`) without stopping its compose counterpart first, your host browser at `localhost:3000` keeps hitting the production build in the compose container — the dev server is reachable only through VS Code's tunneled forwarding. Stop the compose service first:
+The "Try it" URLs from [step 4](#4-try-it) work unchanged — `localhost:3000`, `:8080`, `:8081`, `:5050`.
+
+The workspace's docker-network membership means you can also reach the infra containers by service name from a workspace terminal:
 
 ```bash
-docker compose -f infra/docker-compose.yml stop frontend   # or backend
-make dev-frontend                                          # now host:3000 is the dev server
+curl http://keycloak:8080/health/ready    # the keycloak container
+psql -h backend-db -U backend …           # the backend Postgres
 ```
 
-VS Code auto-forwards the dev server's port to the host as soon as it sees the listener, so refreshing `localhost:3000` then hits the live dev server with HMR.
+Stopping the dev container does not stop the infra stack (and vice versa) — they're independent compose lifecycles that just happen to share a network. `make clean` still wipes everything.
 
-**Compose-mode caveat.** The dev container's compose file (`.devcontainer/docker-compose.yml`) is intentionally standalone — it does *not* `include` `infra/docker-compose.yml`. Pulling infra in would force `${VAR}` interpolation on every service and require a `.env` symlinked into `infra/`. Sharing the network via matching project names gets us the same outcome with no env-file gymnastics.
+### Don't run `make up` while the devcontainer is up
+
+The workspace publishes host `:3000` and `:8081` for the dev servers, which collides with the compose `frontend` / `backend` services. `make up` will fail to start those two while the devcontainer is running. The two workflows are mutually exclusive:
+
+- **Devcontainer**: `make up-infra` + `make dev-backend` + `make dev-frontend`.
+- **Host**: `make up` (no devcontainer running).
+
+### Compose-mode caveat
+
+The dev container's compose file (`.devcontainer/docker-compose.yml`) is intentionally standalone — it does *not* `include` `infra/docker-compose.yml`. Pulling infra in would force `${VAR}` interpolation on every service and require a `.env` symlinked into `infra/`. Sharing the network via matching project names (`name: social-login` in both files) gets us the same outcome with no env-file gymnastics.
 
 ## Common commands
 
 Run `make help` for the full list. The ones you'll use most:
 
 ```bash
-make up           # start everything in the background
+make up           # start everything in the background (host flow)
+make up-infra     # start only DBs / Keycloak / pgadmin (devcontainer flow)
 make down         # stop everything (volumes preserved)
 make restart      # down + up
 make logs         # tail all logs
@@ -151,8 +165,8 @@ make ps           # service status
 make clean        # ⚠️  down + remove volumes (destroys all data)
 make realm-reset  # drop the Keycloak realm and re-bootstrap
 
-make dev-backend  # run Spring Boot on the host with live reload
-make dev-frontend # run Nuxt on the host with HMR
+make dev-backend  # run Spring Boot with live reload (workspace or host)
+make dev-frontend # run Nuxt with HMR (workspace or host)
 make test-backend # ./gradlew test
 
 make shell-backend
@@ -243,6 +257,18 @@ Keycloak didn't come up in time. `make logs-keycloak` to see why — usually it'
 ### I changed `KEYCLOAK_REALM_*` values in `.env` and they aren't taking effect
 
 The realm-init bootstrap is **idempotent per entity** (realm, client, mappers, IdP), but it doesn't *update* anything that already exists. If you need to change realm-level settings, run `make realm-reset` to drop and re-bootstrap.
+
+### `Connection to localhost:5432 refused` running the backend in the devcontainer
+
+You ran `./gradlew bootRun` directly. The compose env mapping (datasource URL, JWKS URI, etc.) is re-created by `make dev-backend` from `.env`; raw `bootRun` falls back to Spring defaults (`localhost:5432`), which inside the devcontainer doesn't reach `backend-db`. Use `make dev-backend`.
+
+### `[GET] http://localhost:8081/api/me: <no response>` from the BFF
+
+The BFF reaches the backend at `localhost:8081` (where `make dev-backend` listens) and nothing is answering there. Either `make dev-backend` isn't running, or you tried `make up` (the compose `backend` can't bind `:8081` while the devcontainer holds it). Start `make dev-backend` in a separate terminal.
+
+### "site can't be reached" on `/auth/keycloak/callback` in the devcontainer
+
+The workspace must publish `:3000` directly to the host (defined in `.devcontainer/docker-compose.yml`). If you opened the devcontainer before that change landed, **rebuild** it: VS Code → *Dev Containers: Rebuild Container*. A simple reopen does not re-read the compose file.
 
 ### "Login with Google" redirects to `localhost:9000` and the page can't be reached
 
