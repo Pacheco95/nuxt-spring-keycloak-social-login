@@ -12,7 +12,7 @@
     "format:check": "bunx prettier . --check",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "prepare": "husky"
+    "prepare": "cd .. && husky frontend/.husky"
   },
   "dependencies": {
     "@nuxt/eslint": "1.15.2",
@@ -31,7 +31,7 @@
   "lint-staged": {
     "**/*": [
       "prettier --write --ignore-unknown",
-      "eslint . --fix"
+      "eslint --fix"
     ]
   }
 }
