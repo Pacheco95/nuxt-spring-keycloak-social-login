@@ -1,22 +1,22 @@
 <script setup lang="ts">
 interface MeResponse {
-  sub: string
-  name: string | null
-  email: string | null
-  picture: string | null
+  sub: string;
+  name: string | null;
+  email: string | null;
+  picture: string | null;
 }
 
 // Authentication is enforced by the global oidcAuth middleware (fail-closed
 // default in nuxt.config.ts). Unauthenticated visitors are kicked into the
 // OAuth flow with a callbackRedirectUrl that brings them back here.
-const { logout } = useOidcAuth()
+const { logout } = useOidcAuth();
 
 // SSR-friendly fetch through the BFF proxy. The bearer token is attached
 // server-side; the browser never sees it.
-const { data: me, error, status } = await useFetch<MeResponse>('/api/me')
+const { data: me, error, status } = await useFetch<MeResponse>("/api/me");
 
 async function handleLogout() {
-  await logout('keycloak')
+  await logout("keycloak");
 }
 </script>
 
@@ -40,13 +40,13 @@ async function handleLogout() {
         referrerpolicy="no-referrer"
       >
       <div v-else class="avatar avatar-placeholder" aria-hidden="true">
-        {{ (me.name ?? me.email ?? '?').charAt(0).toUpperCase() }}
+        {{ (me.name ?? me.email ?? "?").charAt(0).toUpperCase() }}
       </div>
       <dl>
         <dt>Name</dt>
-        <dd>{{ me.name ?? '—' }}</dd>
+        <dd>{{ me.name ?? "—" }}</dd>
         <dt>Email</dt>
-        <dd>{{ me.email ?? '—' }}</dd>
+        <dd>{{ me.email ?? "—" }}</dd>
       </dl>
     </div>
 
@@ -61,11 +61,17 @@ async function handleLogout() {
   max-width: 32rem;
   margin: 4rem auto;
   padding: 0 1.5rem;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: #1f2937;
 }
-h1 { font-size: 1.875rem; margin: 0 0 1.5rem; }
-.loading { color: #6b7280; }
+h1 {
+  font-size: 1.875rem;
+  margin: 0 0 1.5rem;
+}
+.loading {
+  color: #6b7280;
+}
 .error {
   padding: 0.75rem 1rem;
   background: #fef2f2;
@@ -96,9 +102,19 @@ h1 { font-size: 1.875rem; margin: 0 0 1.5rem; }
   font-weight: 600;
   color: #6b7280;
 }
-dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
-dt { color: #6b7280; font-size: 0.875rem; }
-dd { margin: 0; }
+dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+}
+dt {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+dd {
+  margin: 0;
+}
 .btn-logout {
   padding: 0.5rem 1rem;
   background: white;
@@ -109,5 +125,7 @@ dd { margin: 0; }
   cursor: pointer;
   color: #1f2937;
 }
-.btn-logout:hover { background: #f9fafb; }
+.btn-logout:hover {
+  background: #f9fafb;
+}
 </style>

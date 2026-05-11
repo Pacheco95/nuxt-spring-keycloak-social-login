@@ -12,19 +12,21 @@
 //
 // Cookie.Secure: see comment on `cookieSecure` below.
 
-const cookieSecure = (process.env.FRONTEND_PUBLIC_URL ?? '').startsWith('https://')
+const cookieSecure = (process.env.FRONTEND_PUBLIC_URL ?? "").startsWith(
+  "https://",
+);
 
 export default defineNuxtConfig({
-  compatibilityDate: '2025-07-15',
+  compatibilityDate: "2025-07-15",
   devtools: { enabled: true },
   ssr: true,
-  modules: ['nuxt-oidc-auth'],
+  modules: ["nuxt-oidc-auth", "@nuxt/eslint"],
 
   runtimeConfig: {
     // Overridden at runtime by NUXT_BACKEND_INTERNAL_URL (set in compose).
-    backendInternalUrl: '',
+    backendInternalUrl: "",
     public: {
-      siteName: 'Social Login Demo',
+      siteName: "Social Login Demo",
     },
   },
 
@@ -41,7 +43,7 @@ export default defineNuxtConfig({
   },
 
   oidc: {
-    defaultProvider: 'keycloak',
+    defaultProvider: "keycloak",
     middleware: {
       // Fail-closed: every route requires auth by default. Public routes opt
       // out via `definePageMeta({ oidcAuth: { enabled: false } })`.
@@ -51,7 +53,7 @@ export default defineNuxtConfig({
       automaticRefresh: true,
       expirationCheck: true,
       cookie: {
-        sameSite: 'lax',
+        sameSite: "lax",
         // Cookie.Secure requires HTTPS. On http://localhost browsers technically
         // allow Secure cookies, but other dev hosts may not — derive from the
         // public URL scheme so production behind HTTPS flips this on.
@@ -62,20 +64,20 @@ export default defineNuxtConfig({
       // Every URL/secret here is a placeholder. The real values come from
       // docker-compose's NUXT_OIDC_PROVIDERS_KEYCLOAK_* env vars at runtime.
       keycloak: {
-        clientId: '',
-        clientSecret: '',
-        redirectUri: '',
-        logoutRedirectUri: '',
+        clientId: "",
+        clientSecret: "",
+        redirectUri: "",
+        logoutRedirectUri: "",
         // Pinned post-callback landing page. See docker-compose.yml comment
         // explaining why the per-login query-param mechanism doesn't work
         // (the lib clears the auth session before reading the URL out of
         // it). Overridden at runtime via NUXT_OIDC_PROVIDERS_KEYCLOAK_CALLBACK_REDIRECT_URL.
-        callbackRedirectUrl: '/profile',
-        authorizationUrl: '',
-        tokenUrl: '',
-        userInfoUrl: '',
-        logoutUrl: '',
-        scope: ['openid', 'profile', 'email'],
+        callbackRedirectUrl: "/profile",
+        authorizationUrl: "",
+        tokenUrl: "",
+        userInfoUrl: "",
+        logoutUrl: "",
+        scope: ["openid", "profile", "email"],
         // The backend re-validates every JWT against the realm's JWKS, so
         // skipping validation here is not a security gap — but it does
         // remove one layer of defense-in-depth. Tracked in
@@ -89,4 +91,4 @@ export default defineNuxtConfig({
       },
     },
   },
-})
+});

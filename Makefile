@@ -19,7 +19,8 @@ endif
 
 .PHONY: help up up-infra up-build down restart ps logs logs-backend logs-frontend logs-keycloak \
         build clean realm-reset test test-backend test-stack test-e2e test-e2e-up test-e2e-down \
-        dev-backend dev-frontend shell-backend shell-frontend db-keycloak db-backend
+        dev-backend dev-frontend shell-backend shell-frontend db-keycloak db-backend \
+        format format-check lint lint-fix
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*?## "; printf "Usage: make <target>\n\nTargets:\n"} \
@@ -141,6 +142,20 @@ dev-frontend: ## Run the frontend on the host with bun (live reload)
 
 test-backend: ## Run backend test suite on the host
 	cd $(ROOT)backend && ./gradlew --no-daemon test
+
+# ── Format & lint ─────────────────────────────────────────────────────────
+# Frontend-only for now — backend has no formatter/linter wired up yet.
+format: ## Format frontend sources (prettier --write)
+	cd $(ROOT)frontend && bun run format
+
+format-check: ## Check frontend formatting without writing (prettier --check)
+	cd $(ROOT)frontend && bun run format:check
+
+lint: ## Lint frontend sources (eslint)
+	cd $(ROOT)frontend && bun run lint
+
+lint-fix: ## Lint frontend sources and auto-fix (eslint --fix)
+	cd $(ROOT)frontend && bun run lint:fix
 
 # ── Stack & e2e tests ─────────────────────────────────────────────────────
 test: test-stack test-e2e ## Run both tiers (stack smoke + e2e)
