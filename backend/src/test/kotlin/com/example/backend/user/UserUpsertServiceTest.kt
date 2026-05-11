@@ -1,6 +1,7 @@
 package com.example.backend.user
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatIllegalStateException
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
@@ -83,10 +84,33 @@ class UserUpsertServiceTest @Autowired constructor(private val userRepository: U
     assertThat(user.name).isEqualTo("eve")
   }
 
-  private fun jwt(sub: String, email: String?, name: String?, picture: String?): Jwt {
-    val builder = Jwt.withTokenValue("token").header("alg", "none").subject(sub)
-    if (email != null) builder.claim("email", email)
-    if (name != null) builder.claim("name", name)
+  @Test
+  fun `throws when the email claim is missing`() {
+    val jwt =
+      Jwt.withTokenValue("t").header("alg", "none").subject("sub-6").claim("name", "Frank").build()
+
+    assertThatIllegalStateException().isThrownBy { service.upsertFromJwt(jwt) }
+  }
+
+  @Test
+  fun `throws when no name claim chain can be resolved`() {
+    val jwt =
+      Jwt.withTokenValue("t")
+        .header("alg", "none")
+        .subject("sub-7")
+        .claim("email", "g@example.com")
+        .build()
+
+    assertThatIllegalStateException().isThrownBy { service.upsertFromJwt(jwt) }
+  }
+
+  private fun jwt(sub: String, email: String, name: String, picture: String?): Jwt {
+    val builder =
+      Jwt.withTokenValue("token")
+        .header("alg", "none")
+        .subject(sub)
+        .claim("email", email)
+        .claim("name", name)
     if (picture != null) builder.claim("picture", picture)
     return builder.build()
   }

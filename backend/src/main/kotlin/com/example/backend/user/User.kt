@@ -12,8 +12,8 @@ import java.util.UUID
 class User(
   @Id val id: UUID = UUID.randomUUID(),
   @Column(name = "keycloak_sub", nullable = false, unique = true) val keycloakSub: String,
-  @Column(unique = true) var email: String?,
-  @Column var name: String?,
+  @Column(nullable = false, unique = true) var email: String,
+  @Column(nullable = false) var name: String,
   @Column(columnDefinition = "text") var picture: String?,
   @Column(name = "created_at", nullable = false, updatable = false)
   val createdAt: Instant = Instant.now(),

@@ -11,7 +11,8 @@ class UserUpsertService(private val userRepository: UserRepository) {
   @Transactional
   fun upsertFromJwt(jwt: Jwt): User {
     val sub = jwt.subject
-    val email = jwt.getClaimAsString("email")
+    val email =
+      jwt.getClaimAsString("email") ?: error("JWT for $sub is missing the required 'email' claim")
     val name = deriveName(jwt)
     val picture = jwt.getClaimAsString("picture")
 
@@ -31,7 +32,7 @@ class UserUpsertService(private val userRepository: UserRepository) {
     return existing
   }
 
-  private fun deriveName(jwt: Jwt): String? {
+  private fun deriveName(jwt: Jwt): String {
     jwt.getClaimAsString("name")?.let {
       return it
     }
@@ -41,5 +42,6 @@ class UserUpsertService(private val userRepository: UserRepository) {
         .ifBlank { null }
     if (composed != null) return composed
     return jwt.getClaimAsString("preferred_username")
+      ?: error("JWT for ${jwt.subject} has no name, given_name/family_name, or preferred_username")
   }
 }

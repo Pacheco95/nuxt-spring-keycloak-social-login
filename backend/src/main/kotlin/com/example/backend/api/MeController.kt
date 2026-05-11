@@ -11,8 +11,8 @@ import org.springframework.web.bind.annotation.RestController
 data class MeResponse(
   val id: UUID,
   val sub: String,
-  val name: String?,
-  val email: String?,
+  val name: String,
+  val email: String,
   val picture: String?,
 )
 
