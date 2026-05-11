@@ -33,15 +33,15 @@ class UserUpsertService(private val userRepository: UserRepository) {
   }
 
   private fun deriveName(jwt: Jwt): String {
+    jwt.getClaimAsString("preferred_username")?.let {
+      return it
+    }
     jwt.getClaimAsString("name")?.let {
       return it
     }
-    val composed =
-      listOfNotNull(jwt.getClaimAsString("given_name"), jwt.getClaimAsString("family_name"))
-        .joinToString(" ")
-        .ifBlank { null }
-    if (composed != null) return composed
-    return jwt.getClaimAsString("preferred_username")
-      ?: error("JWT for ${jwt.subject} has no name, given_name/family_name, or preferred_username")
+    return listOfNotNull(jwt.getClaimAsString("given_name"), jwt.getClaimAsString("family_name"))
+      .joinToString(" ")
+      .ifBlank { null }
+      ?: error("JWT for ${jwt.subject} has no preferred_username, name, or given_name/family_name")
   }
 }

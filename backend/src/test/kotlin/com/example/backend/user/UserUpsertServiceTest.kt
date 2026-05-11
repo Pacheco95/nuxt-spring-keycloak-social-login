@@ -54,40 +54,58 @@ class UserUpsertServiceTest @Autowired constructor(private val userRepository: U
   }
 
   @Test
-  fun `derives name from given_name and family_name when name claim is missing`() {
+  fun `prefers preferred_username over name and given_name family_name`() {
     val jwt =
       Jwt.withTokenValue("t")
         .header("alg", "none")
         .subject("sub-4")
         .claim("email", "d@example.com")
+        .claim("preferred_username", "dana")
+        .claim("name", "Dana Doe")
         .claim("given_name", "Dana")
         .claim("family_name", "Doe")
         .build()
 
     val user = service.upsertFromJwt(jwt)
 
-    assertThat(user.name).isEqualTo("Dana Doe")
+    assertThat(user.name).isEqualTo("dana")
   }
 
   @Test
-  fun `falls back to preferred_username when no other name claims are present`() {
+  fun `falls back to name claim when preferred_username is missing`() {
     val jwt =
       Jwt.withTokenValue("t")
         .header("alg", "none")
         .subject("sub-5")
         .claim("email", "e@example.com")
-        .claim("preferred_username", "eve")
+        .claim("name", "Eve Evans")
         .build()
 
     val user = service.upsertFromJwt(jwt)
 
-    assertThat(user.name).isEqualTo("eve")
+    assertThat(user.name).isEqualTo("Eve Evans")
+  }
+
+  @Test
+  fun `falls back to given_name and family_name when preferred_username and name are missing`() {
+    val jwt =
+      Jwt.withTokenValue("t")
+        .header("alg", "none")
+        .subject("sub-6")
+        .claim("email", "f@example.com")
+        .claim("given_name", "Frank")
+        .claim("family_name", "Foster")
+        .build()
+
+    val user = service.upsertFromJwt(jwt)
+
+    assertThat(user.name).isEqualTo("Frank Foster")
   }
 
   @Test
   fun `throws when the email claim is missing`() {
     val jwt =
-      Jwt.withTokenValue("t").header("alg", "none").subject("sub-6").claim("name", "Frank").build()
+      Jwt.withTokenValue("t").header("alg", "none").subject("sub-7").claim("name", "Frank").build()
 
     assertThatIllegalStateException().isThrownBy { service.upsertFromJwt(jwt) }
   }
@@ -97,7 +115,7 @@ class UserUpsertServiceTest @Autowired constructor(private val userRepository: U
     val jwt =
       Jwt.withTokenValue("t")
         .header("alg", "none")
-        .subject("sub-7")
+        .subject("sub-8")
         .claim("email", "g@example.com")
         .build()
 
