@@ -10,21 +10,22 @@ import org.springframework.security.web.SecurityFilterChain
 @Configuration
 class SecurityConfig {
 
-    @Bean
-    fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
-        http
-            .csrf { it.disable() }
-            .cors { }
-            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
-            .authorizeHttpRequests {
-                it
-                    .requestMatchers(HttpMethod.GET, "/actuator/health/**", "/actuator/info").permitAll()
-                    .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                    .anyRequest().authenticated()
-            }
-            .oauth2ResourceServer { resourceServer ->
-                resourceServer.jwt { }
-            }
-        return http.build()
-    }
+  @Bean
+  fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
+    http
+      .csrf { it.disable() }
+      .cors {}
+      .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
+      .authorizeHttpRequests {
+        it
+          .requestMatchers(HttpMethod.GET, "/actuator/health/**", "/actuator/info")
+          .permitAll()
+          .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
+          .permitAll()
+          .anyRequest()
+          .authenticated()
+      }
+      .oauth2ResourceServer { resourceServer -> resourceServer.jwt {} }
+    return http.build()
+  }
 }

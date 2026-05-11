@@ -20,7 +20,8 @@ endif
 .PHONY: help up up-infra up-build down restart ps logs logs-backend logs-frontend logs-keycloak \
         build clean realm-reset test test-backend test-stack test-e2e test-e2e-up test-e2e-down \
         dev-backend dev-frontend shell-backend shell-frontend db-keycloak db-backend \
-        format format-check lint lint-fix
+        format format-check format-frontend format-check-frontend \
+        format-backend format-check-backend lint lint-fix
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*?## "; printf "Usage: make <target>\n\nTargets:\n"} \
@@ -144,12 +145,22 @@ test-backend: ## Run backend test suite on the host
 	cd $(ROOT)backend && ./gradlew --no-daemon test
 
 # ── Format & lint ─────────────────────────────────────────────────────────
-# Frontend-only for now — backend has no formatter/linter wired up yet.
-format: ## Format frontend sources (prettier --write)
+# Frontend uses prettier + eslint; backend uses Spotless (ktfmt + ktlint).
+format: format-frontend format-backend ## Format both frontend and backend sources
+
+format-check: format-check-frontend format-check-backend ## Check formatting on both frontend and backend
+
+format-frontend: ## Format frontend sources (prettier --write)
 	cd $(ROOT)frontend && bun run format
 
-format-check: ## Check frontend formatting without writing (prettier --check)
+format-check-frontend: ## Check frontend formatting without writing (prettier --check)
 	cd $(ROOT)frontend && bun run format:check
+
+format-backend: ## Format backend sources (spotlessApply)
+	cd $(ROOT)backend && ./gradlew --no-daemon spotlessApply
+
+format-check-backend: ## Check backend formatting without writing (spotlessCheck)
+	cd $(ROOT)backend && ./gradlew --no-daemon spotlessCheck
 
 lint: ## Lint frontend sources (eslint)
 	cd $(ROOT)frontend && bun run lint
