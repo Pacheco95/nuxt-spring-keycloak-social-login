@@ -21,3 +21,5 @@ e2e/test-results/
 
 # Docker volumes (if any are bind-mounted under the repo)
 infra/.volumes/
+
+.claude/settings.local.json
