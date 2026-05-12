@@ -101,8 +101,13 @@ jobs:
           fill PGADMIN_DEFAULT_PASSWORD      "$(openssl rand -base64 24)"
           fill FRONTEND_SESSION_SECRET       "$(openssl rand -base64 36)"
           fill FRONTEND_TOKEN_KEY            "$(openssl rand -base64 32)"
-          # GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET intentionally left blank —
-          # the test override swaps the IdP to mock-google before tests run.
+          # GOOGLE_* values are dummies: the realm-init bootstrap skips
+          # creating the Google IdP entirely when these are blank, which makes
+          # test-stack's idempotency + IdP-existence assertions fail. The
+          # actual OAuth dance against Google is never exercised in CI —
+          # test-e2e swaps the IdP URLs to mock-google before Playwright runs.
+          fill GOOGLE_CLIENT_ID              "ci-mock-google-client-id"
+          fill GOOGLE_CLIENT_SECRET          "ci-mock-google-client-secret"
 
       - name: Bring up the full stack
         run: |
