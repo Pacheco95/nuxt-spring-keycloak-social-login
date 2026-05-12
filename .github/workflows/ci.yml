@@ -1,0 +1,160 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (Spotless + tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up JDK 24
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 24
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Spotless check, test, build
+        run: ./gradlew --no-daemon spotlessCheck test build
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: backend/build/reports/tests/test/
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend (Prettier + ESLint + build)
+    runs-on: ubuntu-latest
+    env:
+      HUSKY: 0
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        # eslint's flat-config loader needs Object.groupBy (Node ≥ 22).
+        # The shebang on `eslint` resolves to node, not bun, so the runner's
+        # default Node 20 trips a TypeError before any lint rule runs.
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Prettier check
+        run: bun run format:check
+
+      - name: ESLint
+        run: bun run lint
+
+      - name: Nuxt build
+        run: bun run build
+
+  e2e:
+    name: End-to-end (stack smoke + Playwright)
+    runs-on: ubuntu-latest
+    env:
+      HUSKY: 0
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Generate .env from .env.example
+        run: |
+          cp .env.example .env
+          fill() {
+            local key=$1 value=$2
+            # escape | in value for sed safety (base64 output never contains |, but defensive)
+            value=${value//|/\\|}
+            sed -i "s|^${key}=.*|${key}=${value}|" .env
+          }
+          # Use hex (not base64) for anything that flows through curl -d /
+          # x-www-form-urlencoded — base64's `+` ships literally over the wire
+          # and the server-side form decoder turns it into a space, breaking
+          # password and client_secret comparisons in test-stack section 4.
+          # FRONTEND_TOKEN_KEY *must* be base64 of exactly 32 bytes (AES key);
+          # it's never URL-encoded so base64 is safe there.
+          fill KEYCLOAK_ADMIN_PASSWORD       "$(openssl rand -hex 24)"
+          fill KEYCLOAK_DB_PASSWORD          "$(openssl rand -hex 24)"
+          fill KEYCLOAK_REALM_CLIENT_SECRET  "$(openssl rand -hex 24)"
+          fill BACKEND_DB_PASSWORD           "$(openssl rand -hex 24)"
+          fill PGADMIN_DEFAULT_PASSWORD      "$(openssl rand -hex 24)"
+          fill FRONTEND_SESSION_SECRET       "$(openssl rand -hex 36)"
+          fill FRONTEND_TOKEN_KEY            "$(openssl rand -base64 32)"
+          # GOOGLE_* values are dummies: the realm-init bootstrap skips
+          # creating the Google IdP entirely when these are blank, which makes
+          # test-stack's idempotency + IdP-existence assertions fail. The
+          # actual OAuth dance against Google is never exercised in CI —
+          # test-e2e swaps the IdP URLs to mock-google before Playwright runs.
+          fill GOOGLE_CLIENT_ID              "ci-mock-google-client-id"
+          fill GOOGLE_CLIENT_SECRET          "ci-mock-google-client-secret"
+
+      - name: Bring up the full stack
+        run: |
+          docker compose -f infra/docker-compose.yml --env-file .env up -d --wait
+          # backend/frontend/pgadmin have no compose healthchecks — poll their
+          # HTTP endpoints so the smoke test doesn't fire before they're ready.
+          for i in {1..90}; do
+            if curl -fsS http://localhost:8081/actuator/health 2>/dev/null | grep -q UP; then
+              echo "✓ Backend is UP"; break
+            fi
+            sleep 2
+            if [ $i -eq 90 ]; then echo "✗ Backend never became healthy"; exit 1; fi
+          done
+          for i in {1..60}; do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/)" = "200" ]; then
+              echo "✓ Frontend is UP"; break
+            fi
+            sleep 2
+            if [ $i -eq 60 ]; then echo "✗ Frontend never became reachable"; exit 1; fi
+          done
+
+      - name: Run stack smoke + Playwright e2e
+        run: make test
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          docker compose -f infra/docker-compose.yml -f infra/docker-compose.test.yml \
+            --env-file .env logs --no-color > compose-logs.txt 2>&1 || true
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+            compose-logs.txt
+          if-no-files-found: ignore
+
+      - name: Tear down stack
+        if: always()
+        run: make test-clean

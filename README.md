@@ -1,5 +1,11 @@
 # Social Login (Keycloak-brokered Google OAuth)
 
+[![CI](https://github.com/Pacheco95/nuxt-spring-keycloak-social-login/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Pacheco95/nuxt-spring-keycloak-social-login/actions/workflows/ci.yml)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.2-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![Nuxt](https://img.shields.io/badge/Nuxt-4-00DC82?logo=nuxt&logoColor=white)](https://nuxt.com)
+[![Keycloak](https://img.shields.io/badge/Keycloak-26-4D4D4D?logo=keycloak&logoColor=white)](https://www.keycloak.org)
+
 A full-stack reference implementation of Google sign-in using **Keycloak 26 as an identity broker** in front of a **Spring Boot 4 / Kotlin 2.2** backend and a **Nuxt 4 SSR** frontend acting as a **BFF**. Tokens never reach the browser — only an HttpOnly session cookie does.
 
 ```
