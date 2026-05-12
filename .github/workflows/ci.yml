@@ -97,14 +97,33 @@ jobs:
           # the test override swaps the IdP to mock-google before tests run.
 
       - name: Bring up the full stack
-        run: make up
+        run: |
+          docker compose -f infra/docker-compose.yml --env-file .env up -d --wait
+          # backend/frontend/pgadmin have no compose healthchecks — poll their
+          # HTTP endpoints so the smoke test doesn't fire before they're ready.
+          for i in {1..90}; do
+            if curl -fsS http://localhost:8081/actuator/health 2>/dev/null | grep -q UP; then
+              echo "✓ Backend is UP"; break
+            fi
+            sleep 2
+            if [ $i -eq 90 ]; then echo "✗ Backend never became healthy"; exit 1; fi
+          done
+          for i in {1..60}; do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/)" = "200" ]; then
+              echo "✓ Frontend is UP"; break
+            fi
+            sleep 2
+            if [ $i -eq 60 ]; then echo "✗ Frontend never became reachable"; exit 1; fi
+          done
 
       - name: Run stack smoke + Playwright e2e
         run: make test
 
       - name: Dump compose logs on failure
         if: failure()
-        run: make logs > compose-logs.txt 2>&1 || true
+        run: |
+          docker compose -f infra/docker-compose.yml -f infra/docker-compose.test.yml \
+            --env-file .env logs --no-color > compose-logs.txt 2>&1 || true
 
       - name: Upload Playwright report on failure
         if: failure()
