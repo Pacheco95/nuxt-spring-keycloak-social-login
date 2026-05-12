@@ -51,6 +51,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Set up Node.js
+        # eslint's flat-config loader needs Object.groupBy (Node ≥ 22).
+        # The shebang on `eslint` resolves to node, not bun, so the runner's
+        # default Node 20 trips a TypeError before any lint rule runs.
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
 
