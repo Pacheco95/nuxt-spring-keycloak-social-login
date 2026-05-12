@@ -38,7 +38,7 @@ async function handleLogout() {
         :alt="me.name ? `${me.name}'s profile picture` : 'Profile picture'"
         class="avatar"
         referrerpolicy="no-referrer"
-      >
+      />
       <div v-else class="avatar avatar-placeholder" aria-hidden="true">
         {{ (me.name ?? me.email ?? "?").charAt(0).toUpperCase() }}
       </div>
