@@ -94,12 +94,18 @@ jobs:
             value=${value//|/\\|}
             sed -i "s|^${key}=.*|${key}=${value}|" .env
           }
-          fill KEYCLOAK_ADMIN_PASSWORD       "$(openssl rand -base64 24)"
-          fill KEYCLOAK_DB_PASSWORD          "$(openssl rand -base64 24)"
-          fill KEYCLOAK_REALM_CLIENT_SECRET  "$(openssl rand -base64 24)"
-          fill BACKEND_DB_PASSWORD           "$(openssl rand -base64 24)"
-          fill PGADMIN_DEFAULT_PASSWORD      "$(openssl rand -base64 24)"
-          fill FRONTEND_SESSION_SECRET       "$(openssl rand -base64 36)"
+          # Use hex (not base64) for anything that flows through curl -d /
+          # x-www-form-urlencoded — base64's `+` ships literally over the wire
+          # and the server-side form decoder turns it into a space, breaking
+          # password and client_secret comparisons in test-stack section 4.
+          # FRONTEND_TOKEN_KEY *must* be base64 of exactly 32 bytes (AES key);
+          # it's never URL-encoded so base64 is safe there.
+          fill KEYCLOAK_ADMIN_PASSWORD       "$(openssl rand -hex 24)"
+          fill KEYCLOAK_DB_PASSWORD          "$(openssl rand -hex 24)"
+          fill KEYCLOAK_REALM_CLIENT_SECRET  "$(openssl rand -hex 24)"
+          fill BACKEND_DB_PASSWORD           "$(openssl rand -hex 24)"
+          fill PGADMIN_DEFAULT_PASSWORD      "$(openssl rand -hex 24)"
+          fill FRONTEND_SESSION_SECRET       "$(openssl rand -hex 36)"
           fill FRONTEND_TOKEN_KEY            "$(openssl rand -base64 32)"
           # GOOGLE_* values are dummies: the realm-init bootstrap skips
           # creating the Google IdP entirely when these are blank, which makes
